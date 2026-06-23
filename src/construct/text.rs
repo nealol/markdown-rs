@@ -32,17 +32,20 @@ use crate::subtokenize::Subresult;
 use crate::tokenizer::Tokenizer;
 
 /// Characters that can start something in text.
-const MARKERS: [u8; 16] = [
-    b'!',  // `label_start_image`
+const MARKERS: [u8; 19] = [
+    b'!',  // `label_start_image`, `obsidian_embed`
     b'$',  // `raw_text` (math (text))
+    b'%',  // `obsidian_comment`
     b'&',  // `character_reference`
     b'*',  // `attention` (emphasis, strong)
+    b'=',  // `obsidian_highlight`
     b'<',  // `autolink`, `html_text`, `mdx_jsx_text`
     b'H',  // `gfm_autolink_literal` (`protocol` kind)
     b'W',  // `gfm_autolink_literal` (`www.` kind)
-    b'[',  // `label_start_link`
+    b'[',  // `label_start_link`, `obsidian_wikilink`
     b'\\', // `character_escape`, `hard_break_escape`
     b']',  // `label_end`, `gfm_label_start_footnote`
+    b'^',  // `obsidian_block_id`
     b'_',  // `attention` (emphasis, strong)
     b'`',  // `raw_text` (code (text))
     b'h',  // `gfm_autolink_literal` (`protocol` kind)
@@ -84,11 +87,12 @@ pub fn before(tokenizer: &mut Tokenizer) -> State {
             State::Ok
         }
         Some(b'!') => {
+            // Try obsidian embed first, then label_start_image.
             tokenizer.attempt(
                 State::Next(StateName::TextBefore),
-                State::Next(StateName::TextBeforeData),
+                State::Next(StateName::TextBeforeImage),
             );
-            State::Retry(StateName::LabelStartImageStart)
+            State::Retry(StateName::ObsidianEmbedStart)
         }
         // raw (text) (code (text), math (text))
         Some(b'$' | b'`') => {
@@ -136,11 +140,13 @@ pub fn before(tokenizer: &mut Tokenizer) -> State {
             State::Retry(StateName::GfmAutolinkLiteralWwwStart)
         }
         Some(b'[') => {
+            // Try obsidian wikilink first, then gfm_label_start_footnote,
+            // then label_start_link.
             tokenizer.attempt(
                 State::Next(StateName::TextBefore),
-                State::Next(StateName::TextBeforeLabelStartLink),
+                State::Next(StateName::TextBeforeWikilinkFallback),
             );
-            State::Retry(StateName::GfmLabelStartFootnoteStart)
+            State::Retry(StateName::ObsidianWikilinkStart)
         }
         Some(b'\\') => {
             tokenizer.attempt(
@@ -162,6 +168,30 @@ pub fn before(tokenizer: &mut Tokenizer) -> State {
                 State::Next(StateName::TextBeforeData),
             );
             State::Retry(StateName::MdxExpressionTextStart)
+        }
+        // obsidian_comment
+        Some(b'%') => {
+            tokenizer.attempt(
+                State::Next(StateName::TextBefore),
+                State::Next(StateName::TextBeforeData),
+            );
+            State::Retry(StateName::ObsidianCommentStart)
+        }
+        // obsidian_highlight
+        Some(b'=') => {
+            tokenizer.attempt(
+                State::Next(StateName::TextBefore),
+                State::Next(StateName::TextBeforeData),
+            );
+            State::Retry(StateName::ObsidianHighlightStart)
+        }
+        // obsidian_block_id
+        Some(b'^') => {
+            tokenizer.attempt(
+                State::Next(StateName::TextBefore),
+                State::Next(StateName::TextBeforeData),
+            );
+            State::Retry(StateName::ObsidianBlockIdStart)
         }
         _ => State::Retry(StateName::TextBeforeData),
     }
@@ -229,6 +259,40 @@ pub fn before_label_start_link(tokenizer: &mut Tokenizer) -> State {
         State::Next(StateName::TextBeforeData),
     );
     State::Retry(StateName::LabelStartLinkStart)
+}
+
+/// Before label start (image).
+///
+/// At `!`, which wasn’t an obsidian embed.
+///
+/// ```markdown
+/// > | ![a](b)
+///     ^
+/// ```
+pub fn before_image(tokenizer: &mut Tokenizer) -> State {
+    tokenizer.attempt(
+        State::Next(StateName::TextBefore),
+        State::Next(StateName::TextBeforeData),
+    );
+    State::Retry(StateName::LabelStartImageStart)
+}
+
+/// Before GFM label start (footnote) / label start (link).
+///
+/// At `[`, which wasn’t an obsidian wikilink.
+///
+/// ```markdown
+/// > | [a](b)
+///     ^
+/// > | [^a]
+///     ^
+/// ```
+pub fn before_wikilink_fallback(tokenizer: &mut Tokenizer) -> State {
+    tokenizer.attempt(
+        State::Next(StateName::TextBefore),
+        State::Next(StateName::TextBeforeLabelStartLink),
+    );
+    State::Retry(StateName::GfmLabelStartFootnoteStart)
 }
 
 /// Before data.

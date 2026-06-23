@@ -219,6 +219,19 @@ pub enum Node {
     Strong(Strong),
     /// Text.
     Text(Text),
+    // Obsidian: phrasing.
+    /// Obsidian: wikilink.
+    ObsidianWikilink(ObsidianWikilink),
+    /// Obsidian: embed.
+    ObsidianEmbed(ObsidianEmbed),
+    /// Obsidian: comment.
+    ObsidianComment(ObsidianComment),
+    /// Obsidian: block id.
+    ObsidianBlockId(ObsidianBlockId),
+    /// Obsidian: highlight.
+    ObsidianHighlight(ObsidianHighlight),
+    /// Obsidian: callout.
+    ObsidianCallout(ObsidianCallout),
 
     // Flow:
     /// Code (flow).
@@ -282,6 +295,12 @@ impl fmt::Debug for Node {
             Node::LinkReference(x) => x.fmt(f),
             Node::Strong(x) => x.fmt(f),
             Node::Text(x) => x.fmt(f),
+            Node::ObsidianWikilink(x) => x.fmt(f),
+            Node::ObsidianEmbed(x) => x.fmt(f),
+            Node::ObsidianComment(x) => x.fmt(f),
+            Node::ObsidianBlockId(x) => x.fmt(f),
+            Node::ObsidianHighlight(x) => x.fmt(f),
+            Node::ObsidianCallout(x) => x.fmt(f),
             Node::Code(x) => x.fmt(f),
             Node::Math(x) => x.fmt(f),
             Node::MdxFlowExpression(x) => x.fmt(f),
@@ -324,6 +343,8 @@ impl ToString for Node {
             Node::TableCell(x) => children_to_string(&x.children),
             Node::ListItem(x) => children_to_string(&x.children),
             Node::Paragraph(x) => children_to_string(&x.children),
+            Node::ObsidianHighlight(x) => children_to_string(&x.children),
+            Node::ObsidianCallout(x) => children_to_string(&x.children),
 
             // Literals.
             Node::MdxjsEsm(x) => x.value.clone(),
@@ -337,6 +358,8 @@ impl ToString for Node {
             Node::Code(x) => x.value.clone(),
             Node::Math(x) => x.value.clone(),
             Node::MdxFlowExpression(x) => x.value.clone(),
+            Node::ObsidianComment(x) => x.value.clone(),
+            Node::ObsidianBlockId(x) => x.id.clone(),
 
             // Voids.
             Node::Break(_)
@@ -344,7 +367,9 @@ impl ToString for Node {
             | Node::Image(_)
             | Node::ImageReference(_)
             | Node::ThematicBreak(_)
-            | Node::Definition(_) => String::new(),
+            | Node::Definition(_)
+            | Node::ObsidianWikilink(_)
+            | Node::ObsidianEmbed(_) => String::new(),
         }
     }
 }
@@ -371,6 +396,8 @@ impl Node {
             Node::Delete(x) => Some(&x.children),
             Node::MdxJsxFlowElement(x) => Some(&x.children),
             Node::MdxJsxTextElement(x) => Some(&x.children),
+            Node::ObsidianHighlight(x) => Some(&x.children),
+            Node::ObsidianCallout(x) => Some(&x.children),
             // Non-parent.
             _ => None,
         }
@@ -396,6 +423,8 @@ impl Node {
             Node::Delete(x) => Some(&mut x.children),
             Node::MdxJsxFlowElement(x) => Some(&mut x.children),
             Node::MdxJsxTextElement(x) => Some(&mut x.children),
+            Node::ObsidianHighlight(x) => Some(&mut x.children),
+            Node::ObsidianCallout(x) => Some(&mut x.children),
             // Non-parent.
             _ => None,
         }
@@ -438,6 +467,12 @@ impl Node {
             Node::ListItem(x) => x.position.as_ref(),
             Node::Definition(x) => x.position.as_ref(),
             Node::Paragraph(x) => x.position.as_ref(),
+            Node::ObsidianWikilink(x) => x.position.as_ref(),
+            Node::ObsidianEmbed(x) => x.position.as_ref(),
+            Node::ObsidianComment(x) => x.position.as_ref(),
+            Node::ObsidianBlockId(x) => x.position.as_ref(),
+            Node::ObsidianHighlight(x) => x.position.as_ref(),
+            Node::ObsidianCallout(x) => x.position.as_ref(),
         }
     }
 
@@ -477,6 +512,12 @@ impl Node {
             Node::ListItem(x) => x.position.as_mut(),
             Node::Definition(x) => x.position.as_mut(),
             Node::Paragraph(x) => x.position.as_mut(),
+            Node::ObsidianWikilink(x) => x.position.as_mut(),
+            Node::ObsidianEmbed(x) => x.position.as_mut(),
+            Node::ObsidianComment(x) => x.position.as_mut(),
+            Node::ObsidianBlockId(x) => x.position.as_mut(),
+            Node::ObsidianHighlight(x) => x.position.as_mut(),
+            Node::ObsidianCallout(x) => x.position.as_mut(),
         }
     }
 
@@ -516,6 +557,12 @@ impl Node {
             Node::ListItem(x) => x.position = position,
             Node::Definition(x) => x.position = position,
             Node::Paragraph(x) => x.position = position,
+            Node::ObsidianWikilink(x) => x.position = position,
+            Node::ObsidianEmbed(x) => x.position = position,
+            Node::ObsidianComment(x) => x.position = position,
+            Node::ObsidianBlockId(x) => x.position = position,
+            Node::ObsidianHighlight(x) => x.position = position,
+            Node::ObsidianCallout(x) => x.position = position,
         }
     }
 }
@@ -1384,6 +1431,165 @@ pub struct MdxJsxExpressionAttribute {
     /// Stops
     #[cfg_attr(feature = "serde", serde(rename = "_markdownRsStops"))]
     pub stops: Vec<Stop>,
+}
+
+/// Obsidian: wikilink.
+///
+/// ```markdown
+/// > | [[Note]]
+///     ^^^^^^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "obsidianWikilink")
+)]
+pub struct ObsidianWikilink {
+    // Void.
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+    // Wikilink.
+    /// Note path / file name. `None` for same-file references like `[[#Heading]]`.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub path: Option<String>,
+    /// Heading anchor within the target note.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub heading: Option<String>,
+    /// Block reference id within the target note.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub block_id: Option<String>,
+    /// Display text (alias).
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub alias: Option<String>,
+}
+
+/// Obsidian: embed.
+///
+/// ```markdown
+/// > | ![[Note]]
+///     ^^^^^^^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "obsidianEmbed")
+)]
+pub struct ObsidianEmbed {
+    // Void.
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+    // Embed.
+    /// Note path / file name. `None` for same-file references.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub path: Option<String>,
+    /// Heading anchor within the target note.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub heading: Option<String>,
+    /// Block reference id within the target note.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub block_id: Option<String>,
+    /// Display text (alias).
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub alias: Option<String>,
+}
+
+/// Obsidian: comment.
+///
+/// ```markdown
+/// > | a %%comment%% b
+///       ^^^^^^^^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "obsidianComment")
+)]
+pub struct ObsidianComment {
+    // Literal.
+    /// Comment content.
+    pub value: String,
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+}
+
+/// Obsidian: block id.
+///
+/// ```markdown
+/// > | a ^id
+///       ^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "obsidianBlockId")
+)]
+pub struct ObsidianBlockId {
+    // Literal.
+    /// Block reference identifier, without the leading caret.
+    pub id: String,
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+}
+
+/// Obsidian: highlight.
+///
+/// ```markdown
+/// > | a ==b== c
+///       ^^^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "obsidianHighlight")
+)]
+pub struct ObsidianHighlight {
+    // Parent.
+    /// Content model.
+    pub children: Vec<Node>,
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+}
+
+/// Obsidian: callout.
+///
+/// ```markdown
+/// > [!note] Title
+/// > Body text.
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "obsidianCallout")
+)]
+pub struct ObsidianCallout {
+    // Parent.
+    /// Content model.
+    pub children: Vec<Node>,
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+    // Callout.
+    /// Callout type identifier (e.g. `note`, `tip`, `warning`).
+    pub callout_type: String,
+    /// Whether the callout is foldable and its initial state.
+    /// `Some(true)` for `+` (expanded), `Some(false)` for `-` (collapsed),
+    /// `None` if not foldable.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub foldable: Option<bool>,
+    /// Optional title text. `None` if no title was specified.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub title: Option<String>,
 }
 
 #[cfg(test)]

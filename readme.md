@@ -18,7 +18,7 @@ CommonMark compliant markdown parser in Rust with ASTs and extensions.
 * [x] **[compliant][commonmark]**
   (100% to CommonMark)
 * [x] **[extensions][]**
-  (100% GFM, 100% MDX, frontmatter, math)
+  (100% GFM, 100% MDX, frontmatter, math, Obsidian)
 * [x] **[safe][security]**
   (100% safe Rust, also 100% safe HTML by default)
 * [x] **[robust][test]**
@@ -144,6 +144,31 @@ Yields:
 </ul>
 ```
 
+Obsidian Flavored Markdown:
+
+```rs
+fn main() -> Result<(), markdown::message::Message> {
+    println!(
+        "{}",
+        markdown::to_html_with_options(
+            "[[Note]] and ==highlight== and %%comment%%",
+            &markdown::Options {
+                parse: markdown::ParseOptions::obsidian(),
+                ..Default::default()
+            }
+        )?
+    );
+
+    Ok(())
+}
+```
+
+Yields:
+
+```html
+<p><a href="Note">Note</a> and <mark>highlight</mark> and </p>
+```
+
 Syntax tree ([mdast][]):
 
 ```rs
@@ -160,7 +185,7 @@ fn main() -> Result<(), markdown::message::Message> {
 Yields:
 
 ```text
-Root { children: [Heading { children: [Text { value: "Hi ", position: Some(1:3-1:6 (2-5)) }, Emphasis { children: [Text { value: "Earth", position: Some(1:7-1:12 (6-11)) }], position: Some(1:6-1:13 (5-12)) }, Text { value: "!", position: Some(1:13-1:14 (12-13)) }], position: Some(1:1-1:14 (0-13)), depth: 1 }], position: Some(1:1-1:14 (0-13)) }
+Root { children: [Heading { children: [Text { value: "Hi ", position: Some(1:3-1:6 (2-5)) }, Emphasis { children: [Text { value: "Earth", position: Some(1:7-1:12 (6-11)) }], position: Some(1:6-1:13 (5-12)) }, Text { value: "!", position: Some(1:13-1:14 (12-13)) }], position: Some(1:1-1:14 (0-13)), depth: 1, block_id: None }], position: Some(1:1-1:14 (0-13)) }
 ```
 
 ## API
@@ -193,6 +218,13 @@ They are not enabled by default but can be turned on with options.
   * JSX
 * frontmatter
 * math
+* Obsidian Flavored Markdown
+  * wikilinks (`[[note]]`)
+  * embeds (`![[note]]`)
+  * block ids (`^block-id`)
+  * comments (`%%comment%%`)
+  * highlights (`==highlight==`)
+  * callouts (`> [!note]`)
 
 It is not a goal of this project to support lots of different extensions.
 It’s instead a goal to support very common and mostly standardized extensions.

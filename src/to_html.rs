@@ -1,4 +1,5 @@
 //! Turn events into a string of HTML.
+use crate::configuration::ObsidianLinkTarget;
 use crate::event::{Event, Kind, Name};
 use crate::mdast::AlignKind;
 use crate::util::{
@@ -71,6 +72,34 @@ struct Definition {
     title: Option<String>,
 }
 
+/// Info about an Obsidian target (wikilink or embed) being compiled.
+#[derive(Debug, Default)]
+struct ObsidianTarget {
+    /// Note path.
+    path: Option<String>,
+    /// Heading anchor.
+    heading: Option<String>,
+    /// Block reference id.
+    block_id: Option<String>,
+    /// Alias / display text.
+    alias: Option<String>,
+}
+
+/// Info about a callout being compiled (for `to_html`).
+#[derive(Debug, Clone)]
+struct ObsidianCalloutHtmlInfo {
+    /// Callout type identifier (e.g. `note`, `tip`, `warning`).
+    callout_type: String,
+    /// Foldable state.
+    foldable: Option<bool>,
+    /// Optional title text.
+    title: Option<String>,
+    /// Whether the title has been emitted yet.
+    title_emitted: bool,
+    /// Whether the first data event (containing the marker) has been processed.
+    first_data_processed: bool,
+}
+
 /// Context used to compile markdown.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug)]
@@ -102,6 +131,10 @@ struct CompileContext<'a> {
     list_expect_first_marker: Option<bool>,
     /// Stack of media (link, image).
     media_stack: Vec<Media>,
+    /// Stack of Obsidian targets (wikilinks/embeds).
+    obsidian_target_stack: Vec<ObsidianTarget>,
+    /// Stack of callout states (one per blockquote level).
+    obsidian_callout_stack: Vec<Option<ObsidianCalloutHtmlInfo>>,
     /// Stack of containers.
     tight_stack: Vec<bool>,
     /// List of definitions.
@@ -150,6 +183,8 @@ impl<'a> CompileContext<'a> {
             character_reference_marker: None,
             list_expect_first_marker: None,
             media_stack: vec![],
+            obsidian_target_stack: vec![],
+            obsidian_callout_stack: vec![],
             definitions: vec![],
             gfm_footnote_definitions: vec![],
             gfm_footnote_definition_calls: vec![],
@@ -356,6 +391,11 @@ fn enter(context: &mut CompileContext) {
         Name::Resource => on_enter_resource(context),
         Name::ResourceDestinationString => on_enter_resource_destination_string(context),
         Name::Strong => on_enter_strong(context),
+        // Obsidian.
+        Name::ObsidianWikilink => on_enter_obsidian_wikilink(context),
+        Name::ObsidianEmbed => on_enter_obsidian_embed(context),
+        Name::ObsidianComment => on_enter_obsidian_comment(context),
+        Name::ObsidianHighlight => on_enter_obsidian_highlight(context),
         _ => {}
     }
 }
@@ -437,6 +477,16 @@ fn exit(context: &mut CompileContext) {
         Name::ResourceTitleString => on_exit_resource_title_string(context),
         Name::Strong => on_exit_strong(context),
         Name::ThematicBreak => on_exit_thematic_break(context),
+        // Obsidian.
+        Name::ObsidianWikilink => on_exit_obsidian_wikilink(context),
+        Name::ObsidianEmbed => on_exit_obsidian_embed(context),
+        Name::ObsidianComment => on_exit_obsidian_comment(context),
+        Name::ObsidianCommentValue => on_exit_obsidian_comment_value(context),
+        Name::ObsidianHighlight => on_exit_obsidian_highlight(context),
+        Name::ObsidianTargetPath => on_exit_obsidian_target_path(context),
+        Name::ObsidianTargetHeading => on_exit_obsidian_target_heading(context),
+        Name::ObsidianTargetBlockId => on_exit_obsidian_target_block_id(context),
+        Name::ObsidianTargetAlias => on_exit_obsidian_target_alias(context),
         _ => {}
     }
 }
@@ -451,8 +501,119 @@ fn on_enter_buffer(context: &mut CompileContext) {
 /// Handle [`Enter`][Kind::Enter]:[`BlockQuote`][Name::BlockQuote].
 fn on_enter_block_quote(context: &mut CompileContext) {
     context.tight_stack.push(false);
-    context.line_ending_if_needed();
-    context.push("<blockquote>");
+
+    // Check if this blockquote is an Obsidian callout.
+    let callout_info = detect_callout_from_events(context);
+
+    if let Some(info) = &callout_info {
+        context.line_ending_if_needed();
+        // Render as a callout div.
+        context.push("<div class=\"callout");
+        if let Some(folded) = info.foldable {
+            if folded {
+                context.push(" is-collapsible is-expanded");
+            } else {
+                context.push(" is-collapsible is-collapsed");
+            }
+        }
+        context.push("\" data-callout=\"");
+        context.push(&encode(&info.callout_type, false));
+        context.push("\">");
+        // Title will be emitted on the first data event.
+    } else {
+        context.line_ending_if_needed();
+        context.push("<blockquote>");
+    }
+
+    context.obsidian_callout_stack.push(callout_info);
+}
+
+/// Detect whether the current blockquote is an Obsidian callout by inspecting
+/// the event stream for the `[!type]` marker in the first paragraph.
+fn detect_callout_from_events(context: &CompileContext) -> Option<ObsidianCalloutHtmlInfo> {
+    use crate::construct::obsidian_callout::detect;
+
+    // Walk forward from the current event to find the first Data event
+    // inside the first paragraph inside this blockquote.
+    let start = context.index;
+    let mut depth = 0i32;
+    let mut found_paragraph = false;
+
+    for i in start..context.events.len() {
+        let event = &context.events[i];
+        match event.kind {
+            Kind::Enter => {
+                if event.name == Name::BlockQuote {
+                    depth += 1;
+                } else if event.name == Name::Paragraph && depth == 1 {
+                    found_paragraph = true;
+                }
+            }
+            Kind::Exit => {
+                if event.name == Name::BlockQuote {
+                    if depth == 1 {
+                        // End of this blockquote — no callout marker found.
+                        return None;
+                    }
+                    depth -= 1;
+                }
+                if event.name == Name::Paragraph && depth == 1 && found_paragraph {
+                    // End of first paragraph — no Data event found.
+                    return None;
+                }
+            }
+        }
+
+        // Look for the first Data exit event inside the first paragraph.
+        if event.kind == Kind::Exit && event.name == Name::Data && depth == 1 && found_paragraph {
+            let slice =
+                Slice::from_position(context.bytes, &Position::from_exit_event(context.events, i));
+            let text = slice.as_str();
+            if let Some(info) = detect(text) {
+                return Some(ObsidianCalloutHtmlInfo {
+                    callout_type: info.callout_type,
+                    foldable: info.foldable,
+                    title: info.title,
+                    title_emitted: false,
+                    first_data_processed: false,
+                });
+            }
+            return None;
+        }
+    }
+
+    None
+}
+
+/// Find the end index of the callout marker `[!type][+-]?[ title]?` in text.
+fn find_callout_marker_end(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    // Skip `[`
+    if i < bytes.len() && bytes[i] == b'[' {
+        i += 1;
+    }
+    // Skip `!`
+    if i < bytes.len() && bytes[i] == b'!' {
+        i += 1;
+    }
+    // Skip type chars until `]`
+    while i < bytes.len() && bytes[i] != b']' {
+        i += 1;
+    }
+    // Skip `]`
+    if i < bytes.len() && bytes[i] == b']' {
+        i += 1;
+    }
+    // Skip optional `+` or `-`
+    if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
+        i += 1;
+    }
+    // Skip optional title (rest of line until newline)
+    while i < bytes.len() && bytes[i] != b'\n' {
+        i += 1;
+    }
+    i
 }
 
 /// Handle [`Enter`][Kind::Enter]:[`CodeIndented`][Name::CodeIndented].
@@ -677,10 +838,45 @@ fn on_enter_list_item_marker(context: &mut CompileContext) {
 
 /// Handle [`Enter`][Kind::Enter]:[`Paragraph`][Name::Paragraph].
 fn on_enter_paragraph(context: &mut CompileContext) {
+    // If this is the first paragraph inside a callout, emit the title div
+    // before the <p> tag.
+    let callout_title_info = {
+        if let Some(callout) = context
+            .obsidian_callout_stack
+            .last_mut()
+            .and_then(|c| c.as_mut())
+        {
+            if callout.title_emitted {
+                None
+            } else {
+                callout.title_emitted = true;
+                Some((callout.callout_type.clone(), callout.title.clone()))
+            }
+        } else {
+            None
+        }
+    };
+
+    let has_callout_title = callout_title_info.is_some();
+
+    if let Some((callout_type, title)) = callout_title_info {
+        context.push("<div class=\"callout-title\">");
+        context.push("<div class=\"callout-title-inner\">");
+        if let Some(t) = &title {
+            context.push(&encode(t, context.encode_html));
+        } else {
+            context.push(&encode(&callout_type, context.encode_html));
+        }
+        context.push("</div></div>");
+    }
+
     let tight = context.tight_stack.last().unwrap_or(&false);
 
     if !tight {
-        context.line_ending_if_needed();
+        // Don't add a line ending if we just emitted a callout title div.
+        if !has_callout_title {
+            context.line_ending_if_needed();
+        }
         context.push("<p>");
     }
 }
@@ -703,6 +899,32 @@ fn on_enter_resource_destination_string(context: &mut CompileContext) {
 fn on_enter_strong(context: &mut CompileContext) {
     if !context.image_alt_inside {
         context.push("<strong>");
+    }
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianWikilink`][Name::ObsidianWikilink].
+fn on_enter_obsidian_wikilink(context: &mut CompileContext) {
+    context
+        .obsidian_target_stack
+        .push(ObsidianTarget::default());
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianEmbed`][Name::ObsidianEmbed].
+fn on_enter_obsidian_embed(context: &mut CompileContext) {
+    context
+        .obsidian_target_stack
+        .push(ObsidianTarget::default());
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianComment`][Name::ObsidianComment].
+fn on_enter_obsidian_comment(_context: &mut CompileContext) {
+    // Comments don't render to HTML — nothing to do.
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianHighlight`][Name::ObsidianHighlight].
+fn on_enter_obsidian_highlight(context: &mut CompileContext) {
+    if !context.image_alt_inside {
+        context.push("<mark>");
     }
 }
 
@@ -752,9 +974,14 @@ fn on_exit_blank_line_ending(context: &mut CompileContext) {
 /// Handle [`Exit`][Kind::Exit]:[`BlockQuote`][Name::BlockQuote].
 fn on_exit_block_quote(context: &mut CompileContext) {
     context.tight_stack.pop();
+    let callout_info = context.obsidian_callout_stack.pop().flatten();
     context.line_ending_if_needed();
     context.slurp_one_line_ending = false;
-    context.push("</blockquote>");
+    if callout_info.is_some() {
+        context.push("</div>");
+    } else {
+        context.push("</blockquote>");
+    }
 }
 
 /// Handle [`Exit`][Kind::Exit]:[`CharacterReferenceMarker`][Name::CharacterReferenceMarker].
@@ -934,14 +1161,45 @@ fn on_exit_drop_slurp(context: &mut CompileContext) {
 
 /// Handle [`Exit`][Kind::Exit]:{[`CodeTextData`][Name::CodeTextData],[`Data`][Name::Data],[`CharacterEscapeValue`][Name::CharacterEscapeValue]}.
 fn on_exit_data(context: &mut CompileContext) {
-    context.push(&encode(
-        Slice::from_position(
-            context.bytes,
-            &Position::from_exit_event(context.events, context.index),
-        )
-        .as_str(),
-        context.encode_html,
-    ));
+    let value = Slice::from_position(
+        context.bytes,
+        &Position::from_exit_event(context.events, context.index),
+    );
+
+    // If we're inside a callout and the title was just emitted (by
+    // on_enter_paragraph), this is the first data event — it contains the
+    // callout marker `[!type]...`. Skip the marker portion.
+    let skip_marker = {
+        if let Some(callout) = context
+            .obsidian_callout_stack
+            .last_mut()
+            .and_then(|c| c.as_mut())
+        {
+            // title_emitted is set to true by on_enter_paragraph.
+            // We use a separate flag to track if we've already processed
+            // the first data event.
+            if callout.title_emitted && !callout.first_data_processed {
+                callout.first_data_processed = true;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    };
+
+    if skip_marker {
+        let text = value.as_str();
+        let marker_end = find_callout_marker_end(text);
+        let rest = text[marker_end..].trim_start();
+        if !rest.is_empty() {
+            context.push(&encode(rest, context.encode_html));
+        }
+        return;
+    }
+
+    context.push(&encode(value.as_str(), context.encode_html));
 }
 
 /// Handle [`Exit`][Kind::Exit]:[`Definition`][Name::Definition].
@@ -1553,6 +1811,174 @@ fn on_exit_strong(context: &mut CompileContext) {
     if !context.image_alt_inside {
         context.push("</strong>");
     }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianWikilink`][Name::ObsidianWikilink].
+fn on_exit_obsidian_wikilink(context: &mut CompileContext) {
+    let target = context
+        .obsidian_target_stack
+        .pop()
+        .expect("expected obsidian target on stack");
+    if context.image_alt_inside {
+        return;
+    }
+    let link_target = ObsidianLinkTarget {
+        path: target.path.clone(),
+        heading: target.heading.clone(),
+        block_id: target.block_id.clone(),
+        alias: target.alias.clone(),
+    };
+    if let Some(ref resolver) = context.options.obsidian_link_resolver {
+        let res = resolver(&link_target);
+        context.push("<a href=\"");
+        context.push(&res.href);
+        context.push("\">");
+        if let Some(text) = &res.text {
+            context.push(&encode(text, context.encode_html));
+        } else {
+            let display = target.alias.as_deref().unwrap_or_else(|| {
+                target
+                    .heading
+                    .as_deref()
+                    .or(target.path.as_deref())
+                    .unwrap_or("")
+            });
+            context.push(&encode(display, context.encode_html));
+        }
+        context.push("</a>");
+        return;
+    }
+    // Default: build a relative URL.
+    let href = build_obsidian_href(&target);
+    let display = target.alias.as_deref().unwrap_or_else(|| {
+        target
+            .heading
+            .as_deref()
+            .or(target.path.as_deref())
+            .unwrap_or("")
+    });
+    context.push("<a href=\"");
+    context.push(&encode(&href, false));
+    context.push("\">");
+    context.push(&encode(display, context.encode_html));
+    context.push("</a>");
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianEmbed`][Name::ObsidianEmbed].
+fn on_exit_obsidian_embed(context: &mut CompileContext) {
+    let target = context
+        .obsidian_target_stack
+        .pop()
+        .expect("expected obsidian target on stack");
+    if context.image_alt_inside {
+        return;
+    }
+    let link_target = ObsidianLinkTarget {
+        path: target.path.clone(),
+        heading: target.heading.clone(),
+        block_id: target.block_id.clone(),
+        alias: target.alias.clone(),
+    };
+    if let Some(ref resolver) = context.options.obsidian_embed_resolver {
+        let res = resolver(&link_target);
+        context.push(&res.html);
+        return;
+    }
+    // Default: render as an image-like element.
+    let href = build_obsidian_href(&target);
+    let alt = target.alias.as_deref().unwrap_or_else(|| {
+        target
+            .heading
+            .as_deref()
+            .or(target.path.as_deref())
+            .unwrap_or("")
+    });
+    context.push("<img src=\"");
+    context.push(&encode(&href, false));
+    context.push("\" alt=\"");
+    context.push(&encode(alt, context.encode_html));
+    context.push("\" />");
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianComment`][Name::ObsidianComment].
+fn on_exit_obsidian_comment(_context: &mut CompileContext) {
+    // Comments don't render to HTML — nothing to do.
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianCommentValue`][Name::ObsidianCommentValue].
+fn on_exit_obsidian_comment_value(_context: &mut CompileContext) {
+    // Comments don't render to HTML — nothing to do.
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianHighlight`][Name::ObsidianHighlight].
+fn on_exit_obsidian_highlight(context: &mut CompileContext) {
+    if !context.image_alt_inside {
+        context.push("</mark>");
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetPath`][Name::ObsidianTargetPath].
+fn on_exit_obsidian_target_path(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &Position::from_exit_event(context.events, context.index),
+    );
+    if let Some(target) = context.obsidian_target_stack.last_mut() {
+        target.path = Some(value.as_str().to_string());
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetHeading`][Name::ObsidianTargetHeading].
+fn on_exit_obsidian_target_heading(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &Position::from_exit_event(context.events, context.index),
+    );
+    if let Some(target) = context.obsidian_target_stack.last_mut() {
+        target.heading = Some(value.as_str().to_string());
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetBlockId`][Name::ObsidianTargetBlockId].
+fn on_exit_obsidian_target_block_id(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &Position::from_exit_event(context.events, context.index),
+    );
+    if let Some(target) = context.obsidian_target_stack.last_mut() {
+        target.block_id = Some(value.as_str().to_string());
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetAlias`][Name::ObsidianTargetAlias].
+fn on_exit_obsidian_target_alias(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &Position::from_exit_event(context.events, context.index),
+    );
+    if let Some(target) = context.obsidian_target_stack.last_mut() {
+        target.alias = Some(value.as_str().to_string());
+    }
+}
+
+/// Build a default href for an Obsidian wikilink or embed target (no resolver).
+fn build_obsidian_href(target: &ObsidianTarget) -> String {
+    let path = target.path.as_deref().unwrap_or("");
+    let heading = target.heading.as_deref();
+    let block_id = target.block_id.as_deref();
+
+    let mut href = String::new();
+    if !path.is_empty() {
+        href.push_str(path);
+    }
+    if let Some(h) = heading {
+        href.push('#');
+        href.push_str(h);
+    } else if let Some(bid) = block_id {
+        href.push_str("#^");
+        href.push_str(bid);
+    }
+    href
 }
 
 /// Handle [`Exit`][Kind::Exit]:[`ThematicBreak`][Name::ThematicBreak].

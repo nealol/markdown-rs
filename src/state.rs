@@ -452,6 +452,8 @@ pub enum Name {
     TextBeforeMdxJsx,
     TextBeforeHardBreakEscape,
     TextBeforeLabelStartLink,
+    TextBeforeImage,
+    TextBeforeWikilinkFallback,
     TextBeforeData,
 
     ThematicBreakStart,
@@ -466,6 +468,46 @@ pub enum Name {
     TitleEscape,
     TitleInside,
     TitleNok,
+
+    // Obsidian: shared target inner parser (used by wikilink and embed).
+    ObsidianTargetStart,
+    ObsidianTargetPath,
+    ObsidianTargetAfterHash,
+    ObsidianTargetHeading,
+    ObsidianTargetAfterCaret,
+    ObsidianTargetBlockId,
+    ObsidianTargetAfterPipe,
+    ObsidianTargetAlias,
+    ObsidianTargetClose,
+
+    // Obsidian: wikilink.
+    ObsidianWikilinkStart,
+    ObsidianWikilinkOpen,
+    ObsidianWikilinkClose,
+
+    // Obsidian: embed.
+    ObsidianEmbedStart,
+    ObsidianEmbedOpen,
+    ObsidianEmbedOpen2,
+    ObsidianEmbedClose,
+
+    // Obsidian: comment.
+    ObsidianCommentStart,
+    ObsidianCommentOpen,
+    ObsidianCommentInside,
+    ObsidianCommentAfter,
+
+    // Obsidian: highlight.
+    ObsidianHighlightStart,
+    ObsidianHighlightSequence,
+    ObsidianHighlightAfter,
+    ObsidianHighlightInside,
+    ObsidianHighlightClose,
+
+    // Obsidian: block id.
+    ObsidianBlockIdStart,
+    ObsidianBlockIdValue,
+    ObsidianBlockIdValueInside,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -951,6 +993,8 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::TextBeforeMdxJsx => construct::text::before_mdx_jsx,
         Name::TextBeforeHardBreakEscape => construct::text::before_hard_break_escape,
         Name::TextBeforeLabelStartLink => construct::text::before_label_start_link,
+        Name::TextBeforeImage => construct::text::before_image,
+        Name::TextBeforeWikilinkFallback => construct::text::before_wikilink_fallback,
         Name::TextBeforeData => construct::text::before_data,
 
         Name::ThematicBreakStart => construct::thematic_break::start,
@@ -965,6 +1009,40 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::TitleEscape => construct::partial_title::escape,
         Name::TitleInside => construct::partial_title::inside,
         Name::TitleNok => construct::partial_title::nok,
+
+        Name::ObsidianTargetStart => construct::obsidian_target::start,
+        Name::ObsidianTargetPath => construct::obsidian_target::path,
+        Name::ObsidianTargetAfterHash => construct::obsidian_target::after_hash,
+        Name::ObsidianTargetHeading => construct::obsidian_target::heading,
+        Name::ObsidianTargetAfterCaret => construct::obsidian_target::after_caret,
+        Name::ObsidianTargetBlockId => construct::obsidian_target::block_id,
+        Name::ObsidianTargetAfterPipe => construct::obsidian_target::after_pipe,
+        Name::ObsidianTargetAlias => construct::obsidian_target::alias,
+        Name::ObsidianTargetClose => construct::obsidian_target::close,
+
+        Name::ObsidianWikilinkStart => construct::obsidian_wikilink::start,
+        Name::ObsidianWikilinkOpen => construct::obsidian_wikilink::open,
+        Name::ObsidianWikilinkClose => construct::obsidian_wikilink::close,
+
+        Name::ObsidianEmbedStart => construct::obsidian_embed::start,
+        Name::ObsidianEmbedOpen => construct::obsidian_embed::open,
+        Name::ObsidianEmbedOpen2 => construct::obsidian_embed::open_2,
+        Name::ObsidianEmbedClose => construct::obsidian_embed::close,
+
+        Name::ObsidianCommentStart => construct::obsidian_comment::start,
+        Name::ObsidianCommentOpen => construct::obsidian_comment::open,
+        Name::ObsidianCommentInside => construct::obsidian_comment::inside,
+        Name::ObsidianCommentAfter => construct::obsidian_comment::after,
+
+        Name::ObsidianHighlightStart => construct::obsidian_highlight::start,
+        Name::ObsidianHighlightSequence => construct::obsidian_highlight::sequence,
+        Name::ObsidianHighlightAfter => construct::obsidian_highlight::after,
+        Name::ObsidianHighlightInside => construct::obsidian_highlight::inside,
+        Name::ObsidianHighlightClose => construct::obsidian_highlight::close,
+
+        Name::ObsidianBlockIdStart => construct::obsidian_block_id::start,
+        Name::ObsidianBlockIdValue => construct::obsidian_block_id::value,
+        Name::ObsidianBlockIdValueInside => construct::obsidian_block_id::value_inside,
     };
 
     func(tokenizer)

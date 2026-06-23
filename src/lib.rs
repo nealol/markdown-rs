@@ -69,7 +69,10 @@ pub use util::mdx::{
     ExpressionParse as MdxExpressionParse, Signal as MdxSignal,
 };
 
-pub use configuration::{CompileOptions, Constructs, Options, ParseOptions};
+pub use configuration::{
+    CompileOptions, Constructs, ObsidianEmbedResolution, ObsidianEmbedResolver,
+    ObsidianLinkResolution, ObsidianLinkResolver, ObsidianLinkTarget, Options, ParseOptions,
+};
 
 use alloc::string::String;
 

@@ -106,7 +106,7 @@ fn mdx_esm() -> Result<(), message::Message> {
             .err()
             .unwrap()
             .to_string(),
-        "1:8: Could not parse esm with swc: Expected 'from', got 'numeric literal (1, 1)' (mdx:swc)",
+        "1:8: Could not parse esm with swc: Expected 'from', got 'numeric literal' (mdx:swc)",
         "should crash on invalid import/exports (2)"
     );
 

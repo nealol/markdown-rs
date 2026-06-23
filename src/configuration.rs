@@ -2,7 +2,7 @@ use crate::util::{
     line_ending::LineEnding,
     mdx::{EsmParse as MdxEsmParse, ExpressionParse as MdxExpressionParse},
 };
-use alloc::{boxed::Box, fmt, string::String};
+use alloc::{boxed::Box, fmt, string::String, sync::Arc};
 
 /// Control which constructs are enabled.
 ///
@@ -332,6 +332,49 @@ pub struct Constructs {
     ///     ^^^
     /// ```
     pub thematic_break: bool,
+    /// Obsidian: wikilink.
+    ///
+    /// ```markdown
+    /// > | a [[Note]] b
+    ///       ^^^^^^^^
+    /// ```
+    pub obsidian_wikilink: bool,
+    /// Obsidian: embed.
+    ///
+    /// ```markdown
+    /// > | a ![[Note]] b
+    ///       ^^^^^^^^^^
+    /// ```
+    pub obsidian_embed: bool,
+    /// Obsidian: block id.
+    ///
+    /// ```markdown
+    /// > | a
+    ///   | ^id
+    ///     ^^^
+    /// ```
+    pub obsidian_block_id: bool,
+    /// Obsidian: comment.
+    ///
+    /// ```markdown
+    /// > | a %%b%% c
+    ///       ^^^^^
+    /// ```
+    pub obsidian_comment: bool,
+    /// Obsidian: highlight.
+    ///
+    /// ```markdown
+    /// > | a ==b== c
+    ///       ^^^^^
+    /// ```
+    pub obsidian_highlight: bool,
+    /// Obsidian: callout.
+    ///
+    /// ```markdown
+    /// > | > [!note] Title
+    ///     ^^^^^^^^^^^^^^^
+    /// ```
+    pub obsidian_callout: bool,
 }
 
 impl Default for Constructs {
@@ -379,6 +422,12 @@ impl Default for Constructs {
             mdx_jsx_flow: false,
             mdx_jsx_text: false,
             thematic_break: true,
+            obsidian_wikilink: false,
+            obsidian_embed: false,
+            obsidian_block_id: false,
+            obsidian_comment: false,
+            obsidian_highlight: false,
+            obsidian_callout: false,
         }
     }
 }
@@ -437,6 +486,31 @@ impl Constructs {
             ..Self::default()
         }
     }
+
+    /// Obsidian Flavored Markdown.
+    ///
+    /// OFM extends `CommonMark` (and is typically combined with GFM) and adds
+    /// support for wikilinks, embeds, block ids, comments, highlights, and
+    /// callouts.
+    ///
+    /// For more information, see the Obsidian Flavored Markdown documentation:
+    /// <https://obsidian.md/help/obsidian-flavored-markdown>.
+    ///
+    /// > 👉 **Note**: OFM is typically combined with GFM. Use
+    /// > `Constructs { ..Constructs::obsidian() }` mixed with `Constructs::gfm()`
+    /// > (or use [`Options::obsidian()`], which turns on both) to get the full
+    /// > Obsidian experience.
+    pub fn obsidian() -> Self {
+        Self {
+            obsidian_wikilink: true,
+            obsidian_embed: true,
+            obsidian_block_id: true,
+            obsidian_comment: true,
+            obsidian_highlight: true,
+            obsidian_callout: true,
+            ..Self::default()
+        }
+    }
 }
 
 /// Configuration that describes how to compile to HTML.
@@ -470,8 +544,77 @@ impl Constructs {
 /// };
 /// # }
 /// ```
+/// Parsed target of an Obsidian wikilink or embed.
+///
+/// This is the shared shape used by both [`ObsidianWikilink`][crate::mdast::Node::ObsidianWikilink]
+/// and [`ObsidianEmbed`][crate::mdast::Node::ObsidianEmbed] nodes, and is what
+/// resolvers receive to decide how to render them.
+///
+/// * `path` — the note path/file name (e.g. `Note`, `Daily notes/2026-06-22`).
+///   `None` for same-file references such as `[[#Heading]]`.
+/// * `heading` — a heading anchor within the target note (e.g. `Heading` from
+///   `[[Note#Heading]]` or `[[#Heading]]`).
+/// * `block_id` — a block reference within the target note (e.g. `abc` from
+///   `[[Note#^abc]]` or `[[#^abc]]`).
+/// * `alias` — display text (e.g. `Alias` from `[[Note|Alias]]`).
+///
+/// At most one of `heading` and `block_id` is `Some`.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct ObsidianLinkTarget {
+    /// Note path/file name, or `None` for same-file references.
+    pub path: Option<String>,
+    /// Heading anchor within the target note.
+    pub heading: Option<String>,
+    /// Block reference id within the target note.
+    pub block_id: Option<String>,
+    /// Display text (alias).
+    pub alias: Option<String>,
+}
+
+/// Result of resolving an Obsidian wikilink to HTML.
+///
+/// * `href` — the (already-encoded) `href` attribute value.
+/// * `text` — optional display text. If `None`, the caller falls back to the
+///   alias / path / heading.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ObsidianLinkResolution {
+    /// Already-encoded `href` attribute value.
+    pub href: String,
+    /// Optional display text (raw; the caller encodes it).
+    pub text: Option<String>,
+}
+
+/// Result of resolving an Obsidian embed to HTML.
+///
+/// * `html` — the full HTML to emit for the embed (already-encoded/sanitized
+///   by the resolver). The caller emits it verbatim.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ObsidianEmbedResolution {
+    /// Full HTML to emit for the embed (resolver is responsible for encoding).
+    pub html: String,
+}
+
+/// Resolver for Obsidian wikilinks.
+///
+/// A boxed closure that receives an [`ObsidianLinkTarget`] and returns an
+/// [`ObsidianLinkResolution`]. Use this to resolve wikilinks against a vault
+/// index, base URL, or other configuration.
+pub type ObsidianLinkResolver = dyn Fn(&ObsidianLinkTarget) -> ObsidianLinkResolution;
+
+/// Resolver for Obsidian embeds.
+///
+/// A boxed closure that receives an [`ObsidianLinkTarget`] and returns an
+/// [`ObsidianEmbedResolution`]. Use this to perform transclusion or generate
+/// custom embed HTML.
+pub type ObsidianEmbedResolver = dyn Fn(&ObsidianLinkTarget) -> ObsidianEmbedResolution;
+
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Serialize, serde::Deserialize),
@@ -992,6 +1135,98 @@ pub struct CompileOptions {
     /// * [*§ 6.1 Disallowed Raw HTML (extension)* in GFM](https://github.github.com/gfm/#disallowed-raw-html-extension-)
     /// * [`cmark-gfm#extensions/tagfilter.c`](https://github.com/github/cmark-gfm/blob/master/extensions/tagfilter.c)
     pub gfm_tagfilter: bool,
+
+    /// Resolver for Obsidian wikilinks.
+    ///
+    /// When `None` (the default), wikilinks are rendered with a best-effort
+    /// `<a href="{path}{#heading|#^blockid}">{alias|path|heading}</a>`.
+    /// Pass a closure to resolve wikilinks against a vault index, base URL,
+    /// or other configuration.
+    ///
+    /// This field is not serialized by serde and is always `None` after
+    /// deserialization.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// use markdown::{
+    ///     to_html_with_options, CompileOptions, Options, ParseOptions,
+    ///     ObsidianLinkResolution, ObsidianLinkTarget,
+    /// };
+    /// # fn main() -> Result<(), markdown::message::Message> {
+    ///
+    /// let options = Options {
+    ///     parse: ParseOptions::obsidian(),
+    ///     compile: CompileOptions {
+    ///         obsidian_link_resolver: Some(std::sync::Arc::new(
+    ///             |target: &ObsidianLinkTarget| ObsidianLinkResolution {
+    ///                 href: format!("/notes/{}", target.path.clone().unwrap_or_default()),
+    ///                 text: target.alias.clone(),
+    ///             },
+    ///         )),
+    ///         ..CompileOptions::default()
+    ///     },
+    /// };
+    ///
+    /// assert_eq!(
+    ///     to_html_with_options("[[Note|Alias]]", &options)?,
+    ///     "<p><a href=\"/notes/Note\">Alias</a></p>"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub obsidian_link_resolver: Option<Arc<ObsidianLinkResolver>>,
+
+    /// Resolver for Obsidian embeds.
+    ///
+    /// When `None` (the default), embeds are rendered with best-effort media
+    /// sniffing (`<img>`, `<audio>`, `<video>`, `<iframe>` for known
+    /// extensions, else an `<a>` to the note).
+    /// Pass a closure to perform transclusion or generate custom embed HTML.
+    ///
+    /// This field is not serialized by serde and is always `None` after
+    /// deserialization.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub obsidian_embed_resolver: Option<Arc<ObsidianEmbedResolver>>,
+}
+
+impl fmt::Debug for CompileOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CompileOptions")
+            .field("allow_any_img_src", &self.allow_any_img_src)
+            .field("allow_dangerous_html", &self.allow_dangerous_html)
+            .field("allow_dangerous_protocol", &self.allow_dangerous_protocol)
+            .field("default_line_ending", &self.default_line_ending)
+            .field("gfm_footnote_back_label", &self.gfm_footnote_back_label)
+            .field(
+                "gfm_footnote_clobber_prefix",
+                &self.gfm_footnote_clobber_prefix,
+            )
+            .field(
+                "gfm_footnote_label_attributes",
+                &self.gfm_footnote_label_attributes,
+            )
+            .field(
+                "gfm_footnote_label_tag_name",
+                &self.gfm_footnote_label_tag_name,
+            )
+            .field("gfm_footnote_label", &self.gfm_footnote_label)
+            .field(
+                "gfm_task_list_item_checkable",
+                &self.gfm_task_list_item_checkable,
+            )
+            .field("gfm_tagfilter", &self.gfm_tagfilter)
+            .field(
+                "obsidian_link_resolver",
+                &self.obsidian_link_resolver.as_ref().map(|_d| "[Function]"),
+            )
+            .field(
+                "obsidian_embed_resolver",
+                &self.obsidian_embed_resolver.as_ref().map(|_d| "[Function]"),
+            )
+            .finish()
+    }
 }
 
 impl CompileOptions {
@@ -1009,6 +1244,19 @@ impl CompileOptions {
             gfm_tagfilter: true,
             ..Self::default()
         }
+    }
+
+    /// Obsidian Flavored Markdown.
+    ///
+    /// On the compilation side, OFM uses best-effort rendering for wikilinks
+    /// and embeds (resolvers are `None`). Pass custom resolvers to customize
+    /// rendering. This preset exists for parity with
+    /// [`ParseOptions::obsidian()`].
+    ///
+    /// For more information, see the Obsidian Flavored Markdown documentation:
+    /// <https://obsidian.md/help/obsidian-flavored-markdown>.
+    pub fn obsidian() -> Self {
+        Self::default()
     }
 }
 
@@ -1304,6 +1552,20 @@ impl ParseOptions {
             ..Self::default()
         }
     }
+
+    /// Obsidian Flavored Markdown.
+    ///
+    /// OFM extends `CommonMark` with wikilinks, embeds, block ids, comments,
+    /// highlights, and callouts.
+    ///
+    /// For more information, see the Obsidian Flavored Markdown documentation:
+    /// <https://obsidian.md/help/obsidian-flavored-markdown>.
+    pub fn obsidian() -> Self {
+        Self {
+            constructs: Constructs::obsidian(),
+            ..Self::default()
+        }
+    }
 }
 
 /// Configuration that describes how to parse from markdown and compile to
@@ -1355,6 +1617,21 @@ impl Options {
             compile: CompileOptions::gfm(),
         }
     }
+
+    /// Obsidian Flavored Markdown.
+    ///
+    /// OFM extends `CommonMark` with wikilinks, embeds, block ids, comments,
+    /// highlights, and callouts. This preset turns on the OFM parse constructs
+    /// and uses best-effort compilation (resolvers are `None`).
+    ///
+    /// For more information, see the Obsidian Flavored Markdown documentation:
+    /// <https://obsidian.md/help/obsidian-flavored-markdown>.
+    pub fn obsidian() -> Self {
+        Self {
+            parse: ParseOptions::obsidian(),
+            compile: CompileOptions::obsidian(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1368,6 +1645,7 @@ mod tests {
         Constructs::default();
         Constructs::gfm();
         Constructs::mdx();
+        Constructs::obsidian();
 
         let constructs = Constructs::default();
         assert!(constructs.attention, "should default to `CommonMark` (1)");
@@ -1404,6 +1682,24 @@ mod tests {
         );
         assert!(constructs.mdx_jsx_flow, "should support `mdx` shortcut (3)");
         assert!(!constructs.frontmatter, "should support `mdx` shortcut (4)");
+
+        let constructs = Constructs::obsidian();
+        assert!(
+            constructs.obsidian_wikilink,
+            "should support `obsidian` shortcut (1)"
+        );
+        assert!(
+            constructs.obsidian_embed,
+            "should support `obsidian` shortcut (2)"
+        );
+        assert!(
+            constructs.obsidian_callout,
+            "should support `obsidian` shortcut (3)"
+        );
+        assert!(
+            !constructs.gfm_autolink_literal,
+            "should support `obsidian` shortcut (4)"
+        );
     }
 
     #[test]
@@ -1411,6 +1707,7 @@ mod tests {
         ParseOptions::default();
         ParseOptions::gfm();
         ParseOptions::mdx();
+        ParseOptions::obsidian();
 
         let options = ParseOptions::default();
         assert!(
@@ -1454,9 +1751,23 @@ mod tests {
             "should support `mdx` shortcut (3)"
         );
 
+        let options = ParseOptions::obsidian();
+        assert!(
+            options.constructs.obsidian_wikilink,
+            "should support `obsidian` shortcut (1)"
+        );
+        assert!(
+            options.constructs.obsidian_callout,
+            "should support `obsidian` shortcut (2)"
+        );
+        assert!(
+            !options.constructs.gfm_autolink_literal,
+            "should support `obsidian` shortcut (3)"
+        );
+
         assert_eq!(
             format!("{:?}", ParseOptions::default()),
-            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: None, mdx_esm_parse: None }",
+            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true, obsidian_wikilink: false, obsidian_embed: false, obsidian_block_id: false, obsidian_comment: false, obsidian_highlight: false, obsidian_callout: false }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: None, mdx_esm_parse: None }",
             "should support `Debug` trait"
         );
         assert_eq!(
@@ -1469,7 +1780,7 @@ mod tests {
                 })),
                 ..Default::default()
             }),
-            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: Some(\"[Function]\"), mdx_esm_parse: Some(\"[Function]\") }",
+            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true, obsidian_wikilink: false, obsidian_embed: false, obsidian_block_id: false, obsidian_comment: false, obsidian_highlight: false, obsidian_callout: false }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: Some(\"[Function]\"), mdx_esm_parse: Some(\"[Function]\") }",
             "should support `Debug` trait on mdx functions"
         );
     }
@@ -1478,6 +1789,7 @@ mod tests {
     fn test_compile_options() {
         CompileOptions::default();
         CompileOptions::gfm();
+        CompileOptions::obsidian();
 
         let options = CompileOptions::default();
         assert!(
@@ -1488,6 +1800,10 @@ mod tests {
             !options.gfm_tagfilter,
             "should default to safe `CommonMark` (2)"
         );
+        assert!(
+            options.obsidian_link_resolver.is_none(),
+            "should default to safe `CommonMark` (3)"
+        );
 
         let options = CompileOptions::gfm();
         assert!(
@@ -1497,6 +1813,16 @@ mod tests {
         assert!(
             options.gfm_tagfilter,
             "should support safe `gfm` shortcut (1)"
+        );
+
+        let options = CompileOptions::obsidian();
+        assert!(
+            options.obsidian_link_resolver.is_none(),
+            "should support `obsidian` shortcut (1)"
+        );
+        assert!(
+            options.obsidian_embed_resolver.is_none(),
+            "should support `obsidian` shortcut (2)"
         );
     }
 
@@ -1538,6 +1864,20 @@ mod tests {
         assert!(
             !options.compile.allow_dangerous_html,
             "should support safe `gfm` shortcut (4)"
+        );
+
+        let options = Options::obsidian();
+        assert!(
+            options.parse.constructs.obsidian_wikilink,
+            "should support `obsidian` shortcut (1)"
+        );
+        assert!(
+            options.parse.constructs.obsidian_callout,
+            "should support `obsidian` shortcut (2)"
+        );
+        assert!(
+            options.compile.obsidian_link_resolver.is_none(),
+            "should support `obsidian` shortcut (3)"
         );
     }
 }

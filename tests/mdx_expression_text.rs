@@ -69,7 +69,7 @@ fn mdx_expression() -> Result<(), message::Message> {
             .err()
             .unwrap()
             .to_string(),
-        "1:9: Could not parse expression with swc: Unexpected eof (mdx:swc)",
+        "1:4: Could not parse expression with swc: Expression expected (mdx:swc)",
         "should crash on an incorrect line comment (1)"
     );
 
@@ -78,7 +78,7 @@ fn mdx_expression() -> Result<(), message::Message> {
             .err()
             .unwrap()
             .to_string(),
-        "1:13: Could not parse expression with swc: Unexpected eof (mdx:swc)",
+        "1:4: Could not parse expression with swc: Expression expected (mdx:swc)",
         "should crash on an incorrect line comment (2)"
     );
 
@@ -144,7 +144,7 @@ fn mdx_expression() -> Result<(), message::Message> {
             .err()
             .unwrap()
             .to_string(),
-        "2:8: Could not parse expression with swc: Unexpected eof (mdx:swc)",
+        "2:8: Could not parse expression with swc: Expression expected (mdx:swc)",
         "should crash on incorrect expressions in containers (1)"
     );
 
@@ -270,7 +270,7 @@ fn mdx_expression_text_gnostic() -> Result<(), message::Message> {
             .err()
             .unwrap()
             .to_string(),
-        "1:9: Could not parse expression with swc: Unexpected eof (mdx:swc)",
+        "1:9: Could not parse expression with swc: Expression expected (mdx:swc)",
         "should crash on an incorrect expression"
     );
 
@@ -323,9 +323,12 @@ fn mdx_expression_text_gnostic() -> Result<(), message::Message> {
     );
 
     assert_eq!(
-        to_html_with_options("a { /* } */ } b", &swc)?,
-        "<p>a  b</p>",
-        "should support an unbalanced closing brace (if JS permits)"
+        to_html_with_options("a { /* } */ } b", &swc)
+            .err()
+            .unwrap()
+            .to_string(),
+        "1:4: Could not parse expression with swc: Expression expected (mdx:swc)",
+        "should crash on an unbalanced closing brace if JS rejects it"
     );
 
     assert_eq!(

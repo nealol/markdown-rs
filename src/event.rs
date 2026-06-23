@@ -3377,11 +3377,330 @@ pub enum Name {
     /// ```
     ThematicBreakSequence,
 
+    // Obsidian: wikilink / embed shared inner target tokens.
+    /// Obsidian: target path (note name) within a wikilink or embed.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianWikilink`][Name::ObsidianWikilink] or
+    ///   [`ObsidianEmbed`][Name::ObsidianEmbed]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_target`][crate::construct::obsidian_target]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note]]
+    ///      ^^^^
+    /// ```
+    ObsidianTargetPath,
+    /// Obsidian: heading anchor within a wikilink or embed target.
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note#Heading]]
+    ///          ^^^^^^^
+    /// ```
+    ObsidianTargetHeading,
+    /// Obsidian: block id marker (`^`) within a wikilink or embed target.
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note#^abc]]
+    ///          ^
+    /// ```
+    ObsidianTargetBlockIdMarker,
+    /// Obsidian: block id value within a wikilink or embed target.
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note#^abc]]
+    ///           ^^^
+    /// ```
+    ObsidianTargetBlockId,
+    /// Obsidian: alias separator (`|`) within a wikilink or embed.
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note|Alias]]
+    ///          ^
+    /// ```
+    ObsidianTargetAliasMarker,
+    /// Obsidian: alias text within a wikilink or embed.
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note|Alias]]
+    ///           ^^^^^
+    /// ```
+    ObsidianTargetAlias,
+    /// Obsidian: hash marker (`#`) within a wikilink or embed target.
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note#Heading]]
+    ///          ^
+    /// ```
+    ObsidianTargetHash,
+
+    // Obsidian: wikilink.
+    /// Whole Obsidian wikilink.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [text content][crate::construct::text]
+    /// * **Content model**:
+    ///   [`ObsidianWikilinkMarker`][Name::ObsidianWikilinkMarker],
+    ///   [`ObsidianTargetPath`][Name::ObsidianTargetPath],
+    ///   [`ObsidianTargetHash`][Name::ObsidianTargetHash],
+    ///   [`ObsidianTargetHeading`][Name::ObsidianTargetHeading],
+    ///   [`ObsidianTargetBlockIdMarker`][Name::ObsidianTargetBlockIdMarker],
+    ///   [`ObsidianTargetBlockId`][Name::ObsidianTargetBlockId],
+    ///   [`ObsidianTargetAliasMarker`][Name::ObsidianTargetAliasMarker],
+    ///   [`ObsidianTargetAlias`][Name::ObsidianTargetAlias]
+    /// * **Construct**:
+    ///   [`obsidian_wikilink`][crate::construct::obsidian_wikilink]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | a [[Note]] b
+    ///       ^^^^^^^^
+    /// ```
+    ObsidianWikilink,
+    /// Obsidian wikilink marker (`[[` / `]]`).
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianWikilink`][Name::ObsidianWikilink]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_wikilink`][crate::construct::obsidian_wikilink]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | [[Note]]
+    ///     ^^    ^^
+    /// ```
+    ObsidianWikilinkMarker,
+
+    // Obsidian: embed.
+    /// Whole Obsidian embed.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [text content][crate::construct::text]
+    /// * **Content model**:
+    ///   [`ObsidianEmbedMarker`][Name::ObsidianEmbedMarker],
+    ///   [`ObsidianTargetPath`][Name::ObsidianTargetPath],
+    ///   [`ObsidianTargetHash`][Name::ObsidianTargetHash],
+    ///   [`ObsidianTargetHeading`][Name::ObsidianTargetHeading],
+    ///   [`ObsidianTargetBlockIdMarker`][Name::ObsidianTargetBlockIdMarker],
+    ///   [`ObsidianTargetBlockId`][Name::ObsidianTargetBlockId],
+    ///   [`ObsidianTargetAliasMarker`][Name::ObsidianTargetAliasMarker],
+    ///   [`ObsidianTargetAlias`][Name::ObsidianTargetAlias]
+    /// * **Construct**:
+    ///   [`obsidian_embed`][crate::construct::obsidian_embed]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | a ![[Note]] b
+    ///       ^^^^^^^^^^
+    /// ```
+    ObsidianEmbed,
+    /// Obsidian embed marker (`![[` / `]]`).
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianEmbed`][Name::ObsidianEmbed]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_embed`][crate::construct::obsidian_embed]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | ![[Note]]
+    ///     ^^^    ^^
+    /// ```
+    ObsidianEmbedMarker,
+
+    // Obsidian: comment.
+    /// Whole Obsidian comment.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [text content][crate::construct::text]
+    /// * **Content model**:
+    ///   [`ObsidianCommentMarker`][Name::ObsidianCommentMarker],
+    ///   [`ObsidianCommentValue`][Name::ObsidianCommentValue]
+    /// * **Construct**:
+    ///   [`obsidian_comment`][crate::construct::obsidian_comment]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | a %%comment%% b
+    ///       ^^^^^^^^^^
+    /// ```
+    ObsidianComment,
+    /// Obsidian comment marker (`%%`).
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianComment`][Name::ObsidianComment]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_comment`][crate::construct::obsidian_comment]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | %%comment%%
+    ///     ^^      ^^
+    /// ```
+    ObsidianCommentMarker,
+    /// Obsidian comment value.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianComment`][Name::ObsidianComment]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_comment`][crate::construct::obsidian_comment]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | %%comment%%
+    ///       ^^^^^^
+    /// ```
+    ObsidianCommentValue,
+
+    // Obsidian: highlight.
+    /// Whole Obsidian highlight.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [text content][crate::construct::text]
+    /// * **Content model**:
+    ///   [`ObsidianHighlightSequence`][Name::ObsidianHighlightSequence],
+    ///   [text content][crate::construct::text]
+    /// * **Construct**:
+    ///   [`obsidian_highlight`][crate::construct::obsidian_highlight]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | a ==b== c
+    ///       ^^^^^
+    /// ```
+    ObsidianHighlight,
+    /// Obsidian highlight sequence (`==`).
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianHighlight`][Name::ObsidianHighlight]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_highlight`][crate::construct::obsidian_highlight]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | ==b==
+    ///     ^^  ^^
+    /// ```
+    ObsidianHighlightSequence,
+
+    // Obsidian: block id.
+    /// Whole Obsidian block id.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [text content][crate::construct::text]
+    /// * **Content model**:
+    ///   [`ObsidianBlockIdMarker`][Name::ObsidianBlockIdMarker],
+    ///   [`ObsidianBlockIdValue`][Name::ObsidianBlockIdValue]
+    /// * **Construct**:
+    ///   [`obsidian_block_id`][crate::construct::obsidian_block_id]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | a
+    ///   | ^id
+    ///     ^^^
+    /// ```
+    ObsidianBlockId,
+    /// Obsidian block id marker (`^`).
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianBlockId`][Name::ObsidianBlockId]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_block_id`][crate::construct::obsidian_block_id]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | ^id
+    ///     ^
+    /// ```
+    ObsidianBlockIdMarker,
+    /// Obsidian block id value.
+    ///
+    /// ## Info
+    ///
+    /// * **Context**:
+    ///   [`ObsidianBlockId`][Name::ObsidianBlockId]
+    /// * **Content model**:
+    ///   void
+    /// * **Construct**:
+    ///   [`obsidian_block_id`][crate::construct::obsidian_block_id]
+    ///
+    /// ## Example
+    ///
+    /// ```markdown
+    /// > | ^id
+    ///      ^^
+    /// ```
+    ObsidianBlockIdValue,
+
     LinePrefix,
 }
 
 /// List of void events, used to make sure everything is working well.
-pub const VOID_EVENTS: [Name; 76] = [
+pub const VOID_EVENTS: [Name; 90] = [
     Name::AttentionSequence,
     Name::AutolinkEmail,
     Name::AutolinkMarker,
@@ -3458,6 +3777,20 @@ pub const VOID_EVENTS: [Name; 76] = [
     Name::SpaceOrTab,
     Name::StrongSequence,
     Name::ThematicBreakSequence,
+    Name::ObsidianWikilinkMarker,
+    Name::ObsidianEmbedMarker,
+    Name::ObsidianTargetPath,
+    Name::ObsidianTargetHash,
+    Name::ObsidianTargetHeading,
+    Name::ObsidianTargetBlockIdMarker,
+    Name::ObsidianTargetBlockId,
+    Name::ObsidianTargetAliasMarker,
+    Name::ObsidianTargetAlias,
+    Name::ObsidianCommentMarker,
+    Name::ObsidianCommentValue,
+    Name::ObsidianHighlightSequence,
+    Name::ObsidianBlockIdMarker,
+    Name::ObsidianBlockIdValue,
 ];
 
 /// Embedded content type.

@@ -637,7 +637,7 @@ fn mdx_jsx_text_gnostic() -> Result<(), message::Message> {
             .err()
             .unwrap()
             .to_string(),
-        "1:15: Could not parse expression with swc: Unexpected eof (mdx:swc)",
+        "1:15: Could not parse expression with swc: Expression expected (mdx:swc)",
         "should crash on an empty attribute value expression"
     );
 

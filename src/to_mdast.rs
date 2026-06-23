@@ -6,8 +6,9 @@ use crate::mdast::{
     Definition, Delete, Emphasis, FootnoteDefinition, FootnoteReference, Heading, Html, Image,
     ImageReference, InlineCode, InlineMath, Link, LinkReference, List, ListItem, Math,
     MdxFlowExpression, MdxJsxAttribute, MdxJsxExpressionAttribute, MdxJsxFlowElement,
-    MdxJsxTextElement, MdxTextExpression, MdxjsEsm, Node, Paragraph, ReferenceKind, Root, Strong,
-    Table, TableCell, TableRow, Text, ThematicBreak, Toml, Yaml,
+    MdxJsxTextElement, MdxTextExpression, MdxjsEsm, Node, ObsidianBlockId, ObsidianCallout,
+    ObsidianComment, ObsidianEmbed, ObsidianHighlight, ObsidianWikilink, Paragraph, ReferenceKind,
+    Root, Strong, Table, TableCell, TableRow, Text, ThematicBreak, Toml, Yaml,
 };
 use crate::message;
 use crate::unist::{Point, Position};
@@ -330,6 +331,12 @@ fn enter(context: &mut CompileContext) -> Result<(), message::Message> {
         Name::Resource => on_enter_resource(context),
         Name::Strong => on_enter_strong(context),
         Name::ThematicBreak => on_enter_thematic_break(context),
+        // Obsidian.
+        Name::ObsidianWikilink => on_enter_obsidian_wikilink(context),
+        Name::ObsidianEmbed => on_enter_obsidian_embed(context),
+        Name::ObsidianComment => on_enter_obsidian_comment(context),
+        Name::ObsidianBlockId => on_enter_obsidian_block_id(context),
+        Name::ObsidianHighlight => on_enter_obsidian_highlight(context),
         _ => {}
     }
 
@@ -340,7 +347,6 @@ fn enter(context: &mut CompileContext) -> Result<(), message::Message> {
 fn exit(context: &mut CompileContext) -> Result<(), message::Message> {
     match context.events[context.index].name {
         Name::Autolink
-        | Name::BlockQuote
         | Name::CharacterReference
         | Name::Definition
         | Name::Emphasis
@@ -356,6 +362,7 @@ fn exit(context: &mut CompileContext) -> Result<(), message::Message> {
         | Name::ThematicBreak => {
             on_exit(context)?;
         }
+        Name::BlockQuote => on_exit_block_quote(context)?,
         Name::CharacterEscapeValue
         | Name::CodeFlowChunk
         | Name::CodeTextData
@@ -431,6 +438,17 @@ fn exit(context: &mut CompileContext) -> Result<(), message::Message> {
         Name::ReferenceString => on_exit_reference_string(context),
         Name::ResourceDestinationString => on_exit_resource_destination_string(context),
         Name::ResourceTitleString => on_exit_resource_title_string(context),
+        // Obsidian.
+        Name::ObsidianWikilink => on_exit_obsidian_wikilink(context)?,
+        Name::ObsidianEmbed => on_exit_obsidian_embed(context)?,
+        Name::ObsidianComment => on_exit_obsidian_comment(context)?,
+        Name::ObsidianCommentValue => on_exit_obsidian_comment_value(context),
+        Name::ObsidianHighlight | Name::ObsidianBlockId => on_exit(context)?,
+        Name::ObsidianTargetPath => on_exit_obsidian_target_path(context),
+        Name::ObsidianTargetHeading => on_exit_obsidian_target_heading(context),
+        Name::ObsidianTargetBlockId => on_exit_obsidian_target_block_id(context),
+        Name::ObsidianTargetAlias => on_exit_obsidian_target_alias(context),
+        Name::ObsidianBlockIdValue => on_exit_obsidian_block_id_value(context),
         _ => {}
     }
 
@@ -700,6 +718,52 @@ fn on_enter_thematic_break(context: &mut CompileContext) {
     context.tail_push(Node::ThematicBreak(ThematicBreak { position: None }));
 }
 
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianWikilink`][Name::ObsidianWikilink].
+fn on_enter_obsidian_wikilink(context: &mut CompileContext) {
+    context.tail_push(Node::ObsidianWikilink(ObsidianWikilink {
+        path: None,
+        heading: None,
+        block_id: None,
+        alias: None,
+        position: None,
+    }));
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianEmbed`][Name::ObsidianEmbed].
+fn on_enter_obsidian_embed(context: &mut CompileContext) {
+    context.tail_push(Node::ObsidianEmbed(ObsidianEmbed {
+        path: None,
+        heading: None,
+        block_id: None,
+        alias: None,
+        position: None,
+    }));
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianComment`][Name::ObsidianComment].
+fn on_enter_obsidian_comment(context: &mut CompileContext) {
+    context.tail_push(Node::ObsidianComment(ObsidianComment {
+        value: String::new(),
+        position: None,
+    }));
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianBlockId`][Name::ObsidianBlockId].
+fn on_enter_obsidian_block_id(context: &mut CompileContext) {
+    context.tail_push(Node::ObsidianBlockId(ObsidianBlockId {
+        id: String::new(),
+        position: None,
+    }));
+}
+
+/// Handle [`Enter`][Kind::Enter]:[`ObsidianHighlight`][Name::ObsidianHighlight].
+fn on_enter_obsidian_highlight(context: &mut CompileContext) {
+    context.tail_push(Node::ObsidianHighlight(ObsidianHighlight {
+        children: vec![],
+        position: None,
+    }));
+}
+
 /// Handle [`Enter`][Kind::Enter]:[`HeadingAtx`][Name::HeadingAtx].
 fn on_enter_heading(context: &mut CompileContext) {
     context.tail_push(Node::Heading(Heading {
@@ -927,6 +991,129 @@ fn on_enter_paragraph(context: &mut CompileContext) {
 fn on_exit(context: &mut CompileContext) -> Result<(), message::Message> {
     context.tail_pop()?;
     Ok(())
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`BlockQuote`][Name::BlockQuote].
+///
+/// If the blockquote is an Obsidian callout (first line starts with `[!type]`),
+/// convert it to an [`ObsidianCallout`] node.
+fn on_exit_block_quote(context: &mut CompileContext) -> Result<(), message::Message> {
+    // Check if this blockquote is a callout.
+    if context.events[context.index].name == Name::BlockQuote {
+        if let Node::Blockquote(bq) = context.tail_mut() {
+            if let Some(callout) = try_callout_from_blockquote(bq) {
+                // Replace the blockquote node in-place with the callout.
+                let node = Node::ObsidianCallout(callout);
+                // Pop first to set position end, then replace the last child.
+                context.tail_pop()?;
+                // Now replace the last child of the parent with the callout.
+                let parent = context.tail_mut();
+                let children = parent.children_mut().expect("expected parent");
+                if let Some(last) = children.last_mut() {
+                    *last = node;
+                }
+                return Ok(());
+            }
+        }
+    }
+
+    on_exit(context)
+}
+
+/// Try to extract callout info from a blockquote's first paragraph.
+///
+/// Returns `Some(ObsidianCallout)` if the blockquote is a callout, `None`
+/// otherwise. The callout's children are the blockquote's children with the
+/// callout marker text removed from the first paragraph.
+fn try_callout_from_blockquote(bq: &Blockquote) -> Option<ObsidianCallout> {
+    use crate::construct::obsidian_callout::detect;
+
+    let first = bq.children.first()?;
+
+    // The first child must be a paragraph whose first text child starts with
+    // the callout marker `[!type]`.
+    let para = if let Node::Paragraph(p) = first {
+        p
+    } else {
+        return None;
+    };
+
+    // Get the text content of the first child of the paragraph.
+    let first_text = para.children.first()?;
+    let text = if let Node::Text(t) = first_text {
+        &t.value
+    } else {
+        return None;
+    };
+
+    let info = detect(text)?;
+
+    // Build the callout children: the first paragraph's children are modified
+    // to remove the callout marker text, and the rest of the blockquote's
+    // children are kept as-is.
+    let mut children = bq.children.clone();
+
+    if let Some(Node::Paragraph(first_para)) = children.first_mut() {
+        // Remove the callout marker from the first text child.
+        // The marker is `[!type][+-]?[ title]?` at the start of the text.
+        // Find the end of the marker in the original text.
+        let marker_end = find_marker_end(text);
+        if let Some(Node::Text(t)) = first_para.children.first_mut() {
+            if marker_end >= t.value.len() {
+                // The entire text was the marker — remove this text child.
+                first_para.children.remove(0);
+            } else {
+                // Keep the rest of the text after the marker.
+                t.value = t.value[marker_end..].trim_start().to_string();
+                if t.value.is_empty() {
+                    first_para.children.remove(0);
+                }
+            }
+        }
+        // If the first paragraph is now empty, remove it.
+        if first_para.children.is_empty() {
+            children.remove(0);
+        }
+    }
+
+    Some(ObsidianCallout {
+        children,
+        position: bq.position.clone(),
+        callout_type: info.callout_type,
+        foldable: info.foldable,
+        title: info.title,
+    })
+}
+
+/// Find the end index of the callout marker in the text.
+///
+/// The marker is `[!type][+-]?[ title]?`. This returns the index after the
+/// entire marker (including optional title text on the same line).
+fn find_marker_end(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    // Skip `[!type]`
+    let mut i = 0;
+    if i < bytes.len() && bytes[i] == b'[' {
+        i += 1;
+    }
+    if i < bytes.len() && bytes[i] == b'!' {
+        i += 1;
+    }
+    while i < bytes.len() && bytes[i] != b']' {
+        i += 1;
+    }
+    if i < bytes.len() && bytes[i] == b']' {
+        i += 1;
+    }
+    // Skip optional `+` or `-`
+    if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
+        i += 1;
+    }
+    // Skip optional title (rest of the line until newline)
+    while i < bytes.len() && bytes[i] != b'\n' {
+        i += 1;
+    }
+    i
 }
 
 /// Handle [`Exit`][Kind::Exit]:[`AutolinkProtocol`][Name::AutolinkProtocol].
@@ -1827,4 +2014,102 @@ fn serialize_abbreviated_tag(tag: &JsxTag) -> String {
         if tag.close { "/" } else { "" },
         if let Some(name) = &tag.name { name } else { "" },
     )
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianWikilink`][Name::ObsidianWikilink].
+fn on_exit_obsidian_wikilink(context: &mut CompileContext) -> Result<(), message::Message> {
+    on_exit(context)
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianEmbed`][Name::ObsidianEmbed].
+fn on_exit_obsidian_embed(context: &mut CompileContext) -> Result<(), message::Message> {
+    on_exit(context)
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianComment`][Name::ObsidianComment].
+fn on_exit_obsidian_comment(context: &mut CompileContext) -> Result<(), message::Message> {
+    on_exit(context)
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianCommentValue`][Name::ObsidianCommentValue].
+fn on_exit_obsidian_comment_value(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &SlicePosition::from_exit_event(context.events, context.index),
+    );
+    if let Node::ObsidianComment(node) = context.tail_mut() {
+        node.value = value.as_str().to_string();
+    } else {
+        unreachable!("expected obsidian comment on stack");
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetPath`][Name::ObsidianTargetPath].
+fn on_exit_obsidian_target_path(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &SlicePosition::from_exit_event(context.events, context.index),
+    );
+    let s = value.as_str().to_string();
+    match context.tail_mut() {
+        Node::ObsidianWikilink(node) => node.path = Some(s),
+        Node::ObsidianEmbed(node) => node.path = Some(s),
+        _ => unreachable!("expected obsidian wikilink or embed on stack"),
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetHeading`][Name::ObsidianTargetHeading].
+fn on_exit_obsidian_target_heading(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &SlicePosition::from_exit_event(context.events, context.index),
+    );
+    let s = value.as_str().to_string();
+    match context.tail_mut() {
+        Node::ObsidianWikilink(node) => node.heading = Some(s),
+        Node::ObsidianEmbed(node) => node.heading = Some(s),
+        _ => unreachable!("expected obsidian wikilink or embed on stack"),
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetBlockId`][Name::ObsidianTargetBlockId].
+fn on_exit_obsidian_target_block_id(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &SlicePosition::from_exit_event(context.events, context.index),
+    );
+    let s = value.as_str().to_string();
+    match context.tail_mut() {
+        Node::ObsidianWikilink(node) => node.block_id = Some(s),
+        Node::ObsidianEmbed(node) => node.block_id = Some(s),
+        _ => unreachable!("expected obsidian wikilink or embed on stack"),
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianTargetAlias`][Name::ObsidianTargetAlias].
+fn on_exit_obsidian_target_alias(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &SlicePosition::from_exit_event(context.events, context.index),
+    );
+    let s = value.as_str().to_string();
+    match context.tail_mut() {
+        Node::ObsidianWikilink(node) => node.alias = Some(s),
+        Node::ObsidianEmbed(node) => node.alias = Some(s),
+        _ => unreachable!("expected obsidian wikilink or embed on stack"),
+    }
+}
+
+/// Handle [`Exit`][Kind::Exit]:[`ObsidianBlockIdValue`][Name::ObsidianBlockIdValue].
+fn on_exit_obsidian_block_id_value(context: &mut CompileContext) {
+    let value = Slice::from_position(
+        context.bytes,
+        &SlicePosition::from_exit_event(context.events, context.index),
+    );
+    let s = value.as_str().to_string();
+    if let Node::ObsidianBlockId(node) = context.tail_mut() {
+        node.id = s;
+    } else {
+        unreachable!("expected obsidian block id on stack")
+    }
 }
