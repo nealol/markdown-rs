@@ -34,6 +34,7 @@
 )]
 
 extern crate alloc;
+mod code_hike_blocks;
 mod configuration;
 mod construct;
 mod event;
@@ -162,6 +163,11 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
 /// ```
 pub fn to_mdast(value: &str, options: &ParseOptions) -> Result<mdast::Node, message::Message> {
     let (events, parse_state) = parser::parse(value, options)?;
-    let node = to_mdast::compile(&events, parse_state.bytes)?;
+    let mut node = to_mdast::compile(&events, parse_state.bytes)?;
+
+    if options.constructs.code_hike_blocks {
+        code_hike_blocks::transform(&mut node);
+    }
+
     Ok(node)
 }

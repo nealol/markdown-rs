@@ -375,6 +375,24 @@ pub struct Constructs {
     ///     ^^^^^^^^^^^^^^^
     /// ```
     pub obsidian_callout: bool,
+    /// `CodeHike`: decorated blocks.
+    ///
+    /// When enabled, the mdast produced by [`to_mdast`][crate::to_mdast] is
+    /// post-processed to turn `CodeHike`-style decorations (`!name`, `!!name`)
+    /// on headings, paragraphs, images, and fenced code blocks into dedicated
+    /// `CodeHike*` mdast nodes.
+    ///
+    /// This is a structural mdast transform only. It does not change
+    /// `to_html` / `to_html_with_options` output, which compiles directly
+    /// from parser events.
+    ///
+    /// ```markdown
+    /// > | ## !mordor Barad-dur
+    ///     ^^^^^^^^^^^^^^^^^^^^
+    /// > | The Dark Tower
+    ///     ^^^^^^^^^^^^^^
+    /// ```
+    pub code_hike_blocks: bool,
 }
 
 impl Default for Constructs {
@@ -428,6 +446,7 @@ impl Default for Constructs {
             obsidian_comment: false,
             obsidian_highlight: false,
             obsidian_callout: false,
+            code_hike_blocks: false,
         }
     }
 }
@@ -508,6 +527,21 @@ impl Constructs {
             obsidian_comment: true,
             obsidian_highlight: true,
             obsidian_callout: true,
+            ..Self::default()
+        }
+    }
+
+    /// `CodeHike` blocks.
+    ///
+    /// Enables the `CodeHike`-style decorated block transform on the mdast
+    /// produced by [`to_mdast`][crate::to_mdast]. See
+    /// [`Constructs::code_hike_blocks`] for details.
+    ///
+    /// For more information on `CodeHike`, see:
+    /// <https://codehike.org>.
+    pub fn code_hike() -> Self {
+        Self {
+            code_hike_blocks: true,
             ..Self::default()
         }
     }
@@ -1566,6 +1600,18 @@ impl ParseOptions {
             ..Self::default()
         }
     }
+
+    /// `CodeHike` blocks.
+    ///
+    /// Enables the `CodeHike`-style decorated block transform on the mdast
+    /// produced by [`to_mdast`][crate::to_mdast]. See
+    /// [`Constructs::code_hike_blocks`] for details.
+    pub fn code_hike() -> Self {
+        Self {
+            constructs: Constructs::code_hike(),
+            ..Self::default()
+        }
+    }
 }
 
 /// Configuration that describes how to parse from markdown and compile to
@@ -1632,6 +1678,22 @@ impl Options {
             compile: CompileOptions::obsidian(),
         }
     }
+
+    /// `CodeHike` blocks.
+    ///
+    /// Enables the `CodeHike`-style decorated block transform on the mdast
+    /// produced by [`to_mdast`][crate::to_mdast]. See
+    /// [`Constructs::code_hike_blocks`] for details.
+    ///
+    /// > 👉 **Note**: `CodeHike` blocks currently affect `to_mdast()` only.
+    /// > HTML output (`to_html` / `to_html_with_options`) remains normal
+    /// > markdown because it compiles directly from parser events.
+    pub fn code_hike() -> Self {
+        Self {
+            parse: ParseOptions::code_hike(),
+            compile: CompileOptions::default(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1646,6 +1708,7 @@ mod tests {
         Constructs::gfm();
         Constructs::mdx();
         Constructs::obsidian();
+        Constructs::code_hike();
 
         let constructs = Constructs::default();
         assert!(constructs.attention, "should default to `CommonMark` (1)");
@@ -1660,6 +1723,10 @@ mod tests {
         assert!(
             !constructs.frontmatter,
             "should default to `CommonMark` (4)"
+        );
+        assert!(
+            !constructs.code_hike_blocks,
+            "should default to `CommonMark` (5)"
         );
 
         let constructs = Constructs::gfm();
@@ -1700,6 +1767,20 @@ mod tests {
             !constructs.gfm_autolink_literal,
             "should support `obsidian` shortcut (4)"
         );
+
+        let constructs = Constructs::code_hike();
+        assert!(
+            constructs.code_hike_blocks,
+            "should support `code_hike` shortcut (1)"
+        );
+        assert!(
+            constructs.attention,
+            "should support `code_hike` shortcut (2)"
+        );
+        assert!(
+            !constructs.gfm_autolink_literal,
+            "should support `code_hike` shortcut (3)"
+        );
     }
 
     #[test]
@@ -1708,6 +1789,7 @@ mod tests {
         ParseOptions::gfm();
         ParseOptions::mdx();
         ParseOptions::obsidian();
+        ParseOptions::code_hike();
 
         let options = ParseOptions::default();
         assert!(
@@ -1721,6 +1803,10 @@ mod tests {
         assert!(
             !options.constructs.mdx_jsx_flow,
             "should default to `CommonMark` (3)"
+        );
+        assert!(
+            !options.constructs.code_hike_blocks,
+            "should default to `CommonMark` (4)"
         );
 
         let options = ParseOptions::gfm();
@@ -1765,9 +1851,19 @@ mod tests {
             "should support `obsidian` shortcut (3)"
         );
 
+        let options = ParseOptions::code_hike();
+        assert!(
+            options.constructs.code_hike_blocks,
+            "should support `code_hike` shortcut (1)"
+        );
+        assert!(
+            options.constructs.attention,
+            "should support `code_hike` shortcut (2)"
+        );
+
         assert_eq!(
             format!("{:?}", ParseOptions::default()),
-            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true, obsidian_wikilink: false, obsidian_embed: false, obsidian_block_id: false, obsidian_comment: false, obsidian_highlight: false, obsidian_callout: false }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: None, mdx_esm_parse: None }",
+            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true, obsidian_wikilink: false, obsidian_embed: false, obsidian_block_id: false, obsidian_comment: false, obsidian_highlight: false, obsidian_callout: false, code_hike_blocks: false }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: None, mdx_esm_parse: None }",
             "should support `Debug` trait"
         );
         assert_eq!(
@@ -1780,7 +1876,7 @@ mod tests {
                 })),
                 ..Default::default()
             }),
-            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true, obsidian_wikilink: false, obsidian_embed: false, obsidian_block_id: false, obsidian_comment: false, obsidian_highlight: false, obsidian_callout: false }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: Some(\"[Function]\"), mdx_esm_parse: Some(\"[Function]\") }",
+            "ParseOptions { constructs: Constructs { attention: true, autolink: true, block_quote: true, character_escape: true, character_reference: true, code_indented: true, code_fenced: true, code_text: true, definition: true, frontmatter: false, gfm_autolink_literal: false, gfm_footnote_definition: false, gfm_label_start_footnote: false, gfm_strikethrough: false, gfm_table: false, gfm_task_list_item: false, hard_break_escape: true, hard_break_trailing: true, heading_atx: true, heading_setext: true, html_flow: true, html_text: true, label_start_image: true, label_start_link: true, label_end: true, list_item: true, math_flow: false, math_text: false, mdx_esm: false, mdx_expression_flow: false, mdx_expression_text: false, mdx_jsx_flow: false, mdx_jsx_text: false, thematic_break: true, obsidian_wikilink: false, obsidian_embed: false, obsidian_block_id: false, obsidian_comment: false, obsidian_highlight: false, obsidian_callout: false, code_hike_blocks: false }, gfm_strikethrough_single_tilde: true, math_text_single_dollar: true, mdx_expression_parse: Some(\"[Function]\"), mdx_esm_parse: Some(\"[Function]\") }",
             "should support `Debug` trait on mdx functions"
         );
     }
@@ -1829,6 +1925,7 @@ mod tests {
     #[test]
     fn test_options() {
         Options::default();
+        Options::code_hike();
 
         let options = Options::default();
         assert!(
@@ -1878,6 +1975,16 @@ mod tests {
         assert!(
             options.compile.obsidian_link_resolver.is_none(),
             "should support `obsidian` shortcut (3)"
+        );
+
+        let options = Options::code_hike();
+        assert!(
+            options.parse.constructs.code_hike_blocks,
+            "should support `code_hike` shortcut (1)"
+        );
+        assert!(
+            !options.compile.allow_dangerous_html,
+            "should support `code_hike` shortcut (2)"
         );
     }
 }

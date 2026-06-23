@@ -16,7 +16,7 @@ fn serde_constructs() -> Result<(), Error> {
 
     assert_eq!(
         serde_json::to_string(&Constructs::default()).unwrap(),
-        r#"{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":false,"gfmFootnoteDefinition":false,"gfmLabelStartFootnote":false,"gfmStrikethrough":false,"gfmTable":false,"gfmTaskListItem":false,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"mdxEsm":false,"mdxExpressionFlow":false,"mdxExpressionText":false,"mdxJsxFlow":false,"mdxJsxText":false,"thematicBreak":true,"obsidianWikilink":false,"obsidianEmbed":false,"obsidianBlockId":false,"obsidianComment":false,"obsidianHighlight":false,"obsidianCallout":false}"#
+        r#"{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":false,"gfmFootnoteDefinition":false,"gfmLabelStartFootnote":false,"gfmStrikethrough":false,"gfmTable":false,"gfmTaskListItem":false,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"mdxEsm":false,"mdxExpressionFlow":false,"mdxExpressionText":false,"mdxJsxFlow":false,"mdxJsxText":false,"thematicBreak":true,"obsidianWikilink":false,"obsidianEmbed":false,"obsidianBlockId":false,"obsidianComment":false,"obsidianHighlight":false,"obsidianCallout":false,"codeHikeBlocks":false}"#
     );
 
     Ok(())
@@ -42,7 +42,7 @@ fn serde_parse_options() -> Result<(), Error> {
 
     assert_eq!(
         serde_json::to_string(&ParseOptions::gfm()).unwrap(),
-        r#"{"constructs":{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":true,"gfmFootnoteDefinition":true,"gfmLabelStartFootnote":true,"gfmStrikethrough":true,"gfmTable":true,"gfmTaskListItem":true,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"mdxEsm":false,"mdxExpressionFlow":false,"mdxExpressionText":false,"mdxJsxFlow":false,"mdxJsxText":false,"thematicBreak":true,"obsidianWikilink":false,"obsidianEmbed":false,"obsidianBlockId":false,"obsidianComment":false,"obsidianHighlight":false,"obsidianCallout":false},"gfmStrikethroughSingleTilde":true,"mathTextSingleDollar":true}"#
+        r#"{"constructs":{"attention":true,"autolink":true,"blockQuote":true,"characterEscape":true,"characterReference":true,"codeIndented":true,"codeFenced":true,"codeText":true,"definition":true,"frontmatter":false,"gfmAutolinkLiteral":true,"gfmFootnoteDefinition":true,"gfmLabelStartFootnote":true,"gfmStrikethrough":true,"gfmTable":true,"gfmTaskListItem":true,"hardBreakEscape":true,"hardBreakTrailing":true,"headingAtx":true,"headingSetext":true,"htmlFlow":true,"htmlText":true,"labelStartImage":true,"labelStartLink":true,"labelEnd":true,"listItem":true,"mathFlow":false,"mathText":false,"mdxEsm":false,"mdxExpressionFlow":false,"mdxExpressionText":false,"mdxJsxFlow":false,"mdxJsxText":false,"thematicBreak":true,"obsidianWikilink":false,"obsidianEmbed":false,"obsidianBlockId":false,"obsidianComment":false,"obsidianHighlight":false,"obsidianCallout":false,"codeHikeBlocks":false},"gfmStrikethroughSingleTilde":true,"mathTextSingleDollar":true}"#
     );
 
     Ok(())
@@ -685,6 +685,32 @@ fn serde_thematic_break() -> Result<(), Error> {
         "***",
         r#"{"type": "root", "children": [{"type": "thematicBreak"}]}"#,
         ParseOptions::default(),
+    )
+}
+
+#[test]
+fn serde_code_hike_block() -> Result<(), Error> {
+    assert_serde(
+        "## !mordor Barad-dur\nThe Dark Tower",
+        r#"{
+  "type": "root",
+  "children": [
+    {
+      "type": "codeHikeBlock",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [{"type": "text", "value": "The Dark Tower"}]
+        }
+      ],
+      "name": "mordor",
+      "title": "Barad-dur",
+      "list": false,
+      "depth": 2
+    }
+  ]
+}"#,
+        ParseOptions::code_hike(),
     )
 }
 

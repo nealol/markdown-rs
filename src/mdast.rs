@@ -266,6 +266,16 @@ pub enum Node {
     Definition(Definition),
     /// Paragraph.
     Paragraph(Paragraph),
+
+    // CodeHike.
+    /// `CodeHike`: decorated block (grouping).
+    CodeHikeBlock(CodeHikeBlock),
+    /// `CodeHike`: decorated text/value.
+    CodeHikeText(CodeHikeText),
+    /// `CodeHike`: decorated image.
+    CodeHikeImage(CodeHikeImage),
+    /// `CodeHike`: decorated code (flow).
+    CodeHikeCode(CodeHikeCode),
 }
 
 impl fmt::Debug for Node {
@@ -312,6 +322,10 @@ impl fmt::Debug for Node {
             Node::ListItem(x) => x.fmt(f),
             Node::Definition(x) => x.fmt(f),
             Node::Paragraph(x) => x.fmt(f),
+            Node::CodeHikeBlock(x) => x.fmt(f),
+            Node::CodeHikeText(x) => x.fmt(f),
+            Node::CodeHikeImage(x) => x.fmt(f),
+            Node::CodeHikeCode(x) => x.fmt(f),
         }
     }
 }
@@ -345,6 +359,7 @@ impl ToString for Node {
             Node::Paragraph(x) => children_to_string(&x.children),
             Node::ObsidianHighlight(x) => children_to_string(&x.children),
             Node::ObsidianCallout(x) => children_to_string(&x.children),
+            Node::CodeHikeBlock(x) => children_to_string(&x.children),
 
             // Literals.
             Node::MdxjsEsm(x) => x.value.clone(),
@@ -360,6 +375,8 @@ impl ToString for Node {
             Node::MdxFlowExpression(x) => x.value.clone(),
             Node::ObsidianComment(x) => x.value.clone(),
             Node::ObsidianBlockId(x) => x.id.clone(),
+            Node::CodeHikeText(x) => x.value.clone(),
+            Node::CodeHikeCode(x) => x.value.clone(),
 
             // Voids.
             Node::Break(_)
@@ -369,7 +386,8 @@ impl ToString for Node {
             | Node::ThematicBreak(_)
             | Node::Definition(_)
             | Node::ObsidianWikilink(_)
-            | Node::ObsidianEmbed(_) => String::new(),
+            | Node::ObsidianEmbed(_)
+            | Node::CodeHikeImage(_) => String::new(),
         }
     }
 }
@@ -398,6 +416,7 @@ impl Node {
             Node::MdxJsxTextElement(x) => Some(&x.children),
             Node::ObsidianHighlight(x) => Some(&x.children),
             Node::ObsidianCallout(x) => Some(&x.children),
+            Node::CodeHikeBlock(x) => Some(&x.children),
             // Non-parent.
             _ => None,
         }
@@ -425,6 +444,7 @@ impl Node {
             Node::MdxJsxTextElement(x) => Some(&mut x.children),
             Node::ObsidianHighlight(x) => Some(&mut x.children),
             Node::ObsidianCallout(x) => Some(&mut x.children),
+            Node::CodeHikeBlock(x) => Some(&mut x.children),
             // Non-parent.
             _ => None,
         }
@@ -473,6 +493,10 @@ impl Node {
             Node::ObsidianBlockId(x) => x.position.as_ref(),
             Node::ObsidianHighlight(x) => x.position.as_ref(),
             Node::ObsidianCallout(x) => x.position.as_ref(),
+            Node::CodeHikeBlock(x) => x.position.as_ref(),
+            Node::CodeHikeText(x) => x.position.as_ref(),
+            Node::CodeHikeImage(x) => x.position.as_ref(),
+            Node::CodeHikeCode(x) => x.position.as_ref(),
         }
     }
 
@@ -518,6 +542,10 @@ impl Node {
             Node::ObsidianBlockId(x) => x.position.as_mut(),
             Node::ObsidianHighlight(x) => x.position.as_mut(),
             Node::ObsidianCallout(x) => x.position.as_mut(),
+            Node::CodeHikeBlock(x) => x.position.as_mut(),
+            Node::CodeHikeText(x) => x.position.as_mut(),
+            Node::CodeHikeImage(x) => x.position.as_mut(),
+            Node::CodeHikeCode(x) => x.position.as_mut(),
         }
     }
 
@@ -563,6 +591,10 @@ impl Node {
             Node::ObsidianBlockId(x) => x.position = position,
             Node::ObsidianHighlight(x) => x.position = position,
             Node::ObsidianCallout(x) => x.position = position,
+            Node::CodeHikeBlock(x) => x.position = position,
+            Node::CodeHikeText(x) => x.position = position,
+            Node::CodeHikeImage(x) => x.position = position,
+            Node::CodeHikeCode(x) => x.position = position,
         }
     }
 }
@@ -1590,6 +1622,155 @@ pub struct ObsidianCallout {
     /// Optional title text. `None` if no title was specified.
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
+}
+
+/// `CodeHike`: decorated block (grouping).
+///
+/// Produced by the `CodeHike` blocks transform when a decorated heading is
+/// encountered. The block groups following sibling content until the next
+/// heading at the same or higher depth. Deeper decorated headings become
+/// nested `CodeHikeBlock` children.
+///
+/// See [`Constructs::code_hike_blocks`][crate::Constructs::code_hike_blocks].
+///
+/// ```markdown
+/// > | ## !mordor Barad-dur
+///     ^^^^^^^^^^^^^^^^^^^^
+/// > | The Dark Tower
+///     ^^^^^^^^^^^^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "codeHikeBlock")
+)]
+pub struct CodeHikeBlock {
+    // Parent.
+    /// Content model.
+    pub children: Vec<Node>,
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+    // CodeHike.
+    /// Decoration name (e.g. `mordor`).
+    pub name: String,
+    /// Decoration title (the `rest` after the name, e.g. `Barad-dur`).
+    pub title: String,
+    /// Whether the decoration used the repeatable/list form (`!!name`).
+    pub list: bool,
+    /// Heading depth that produced this block (between `1` and `6`).
+    pub depth: u8,
+}
+
+/// `CodeHike`: decorated text/value.
+///
+/// Produced by the `CodeHike` blocks transform when a paragraph whose first
+/// child is a `Text` starting with a decoration is encountered.
+///
+/// See [`Constructs::code_hike_blocks`][crate::Constructs::code_hike_blocks].
+///
+/// ```markdown
+/// > | !author Tolkien
+///     ^^^^^^^^^^^^^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "codeHikeText")
+)]
+pub struct CodeHikeText {
+    // Literal.
+    /// Value text (the `rest` after the decoration name).
+    pub value: String,
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+    // CodeHike.
+    /// Decoration name.
+    pub name: String,
+    /// Whether the decoration used the repeatable/list form (`!!name`).
+    pub list: bool,
+}
+
+/// `CodeHike`: decorated image.
+///
+/// Produced by the `CodeHike` blocks transform when a paragraph contains
+/// exactly one `Image` whose `alt` starts with a decoration.
+///
+/// See [`Constructs::code_hike_blocks`][crate::Constructs::code_hike_blocks].
+///
+/// ```markdown
+/// > | ![!cover Gandalf](/gandalf.jpg "a wizard")
+///     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "codeHikeImage")
+)]
+pub struct CodeHikeImage {
+    // Void.
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+    // CodeHike.
+    /// Decoration name.
+    pub name: String,
+    /// Whether the decoration used the repeatable/list form (`!!name`).
+    pub list: bool,
+    // Image.
+    /// Stripped alternative text (the `rest` after the decoration name).
+    pub alt: String,
+    /// URL to the referenced resource.
+    pub url: String,
+    /// Advisory info for the resource.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub title: Option<String>,
+}
+
+/// `CodeHike`: decorated code (flow).
+///
+/// Produced by the `CodeHike` blocks transform when a fenced `Code` node has
+/// `meta` starting with a decoration.
+///
+/// See [`Constructs::code_hike_blocks`][crate::Constructs::code_hike_blocks].
+///
+/// ````markdown
+/// > | ```js !riddle mellon.js
+///     ^^^^^^^^^^^^^^^^^^^^^^^
+/// > | speak("friend")
+///     ^^^^^^^^^^^^^^^^
+/// > | ```
+///     ^^^
+/// ````
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", rename = "codeHikeCode")
+)]
+pub struct CodeHikeCode {
+    // Literal.
+    /// Code value.
+    pub value: String,
+    /// Positional info.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub position: Option<Position>,
+    // CodeHike.
+    /// Decoration name.
+    pub name: String,
+    /// Whether the decoration used the repeatable/list form (`!!name`).
+    pub list: bool,
+    // Code.
+    /// The language of computer code being marked up.
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub lang: Option<String>,
+    /// Stripped custom info (the `rest` after the decoration name).
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub meta: Option<String>,
 }
 
 #[cfg(test)]
