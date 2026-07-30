@@ -195,9 +195,46 @@ Root { children: [Heading { children: [Text { value: "Hi ", position: Some(1:3-1
 [`to_html_with_options`](https://docs.rs/markdown/latest/markdown/fn.to_html_with_options.html),
 [`to_mdast`](https://docs.rs/markdown/latest/markdown/fn.to_mdast.html),
 [`Options`](https://docs.rs/markdown/latest/markdown/struct.Options.html),
+[`Renderer`](https://docs.rs/markdown/latest/markdown/struct.Renderer.html),
 and a few other structs and enums.
 
 See the [crate docs][docs] for more info.
+
+`Renderer` keeps block checkpoints and stable block ids between edit batches.
+It returns block-level HTML patches instead of serializing the unchanged
+document again:
+
+```rust
+use markdown::{Edit, EditBatch, Options, Renderer};
+
+let mut renderer = Renderer::open(
+    "# Status\n\nParsing the old text.",
+    Options::default(),
+)?;
+let start = renderer.source().find("old").unwrap();
+let result = renderer.apply(EditBatch {
+    base_version: renderer.version(),
+    edits: vec![Edit {
+        start_byte: start,
+        old_end_byte: start + 3,
+        replacement: "new".into(),
+    }],
+})?;
+
+assert_eq!(result.version, 1);
+assert_eq!(
+    renderer.html(),
+    "<h1>Status</h1>\n<p>Parsing the new text.</p>"
+);
+# Ok::<(), markdown::message::Message>(())
+```
+
+Edits use UTF-8 byte offsets and every edit in a batch refers to the same
+base version. Most edits reparse from the preceding block checkpoint until a
+cached block matches. Reference definitions keep a consumer index, so changing
+a destination rerenders only blocks that use it. Footnotes, frontmatter, and
+MDX ESM currently use a whole-document patch because their output isn't
+independent at block boundaries.
 
 ## Extensions
 

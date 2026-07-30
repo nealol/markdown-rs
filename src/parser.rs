@@ -34,6 +34,17 @@ pub fn parse<'a>(
     value: &'a str,
     options: &'a ParseOptions,
 ) -> Result<(Vec<Event>, ParseState<'a>), message::Message> {
+    parse_with_definitions(value, options, vec![], vec![])
+}
+
+/// Turn a string of markdown into events with definitions inherited from a
+/// preceding, independently parsed document region.
+pub(crate) fn parse_with_definitions<'a>(
+    value: &'a str,
+    options: &'a ParseOptions,
+    definitions: Vec<String>,
+    gfm_footnote_definitions: Vec<String>,
+) -> Result<(Vec<Event>, ParseState<'a>), message::Message> {
     let bytes = value.as_bytes();
 
     let mut parse_state = ParseState {
@@ -44,8 +55,8 @@ pub fn parse<'a>(
         } else {
             None
         },
-        definitions: vec![],
-        gfm_footnote_definitions: vec![],
+        definitions,
+        gfm_footnote_definitions,
     };
 
     let start = Point {

@@ -38,6 +38,7 @@ mod code_hike_blocks;
 mod configuration;
 mod construct;
 mod event;
+mod incremental;
 mod parser;
 mod resolve;
 mod state;
@@ -73,6 +74,9 @@ pub use util::mdx::{
 pub use configuration::{
     CompileOptions, Constructs, ObsidianEmbedResolution, ObsidianEmbedResolver,
     ObsidianLinkResolution, ObsidianLinkResolver, ObsidianLinkTarget, Options, ParseOptions,
+};
+pub use incremental::{
+    ApplyResult, BlockCheckpoint, ByteRange, Edit, EditBatch, Patch, RenderedBlock, Renderer,
 };
 
 use alloc::string::String;
