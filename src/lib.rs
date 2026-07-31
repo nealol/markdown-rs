@@ -76,7 +76,8 @@ pub use configuration::{
     ObsidianLinkResolution, ObsidianLinkResolver, ObsidianLinkTarget, Options, ParseOptions,
 };
 pub use incremental::{
-    ApplyResult, BlockCheckpoint, ByteRange, Edit, EditBatch, Patch, RenderedBlock, Renderer,
+    ApplyResult, AstApplyResult, AstApplySummary, AstBlock, AstSession, AstSnapshot,
+    BlockCheckpoint, ByteRange, Edit, EditBatch, Patch, RenderedBlock, Renderer,
 };
 
 use alloc::string::String;

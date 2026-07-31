@@ -5,7 +5,7 @@ path = "benches/bench.rs"
 
 [dependencies]
 log = { optional = true, version = "0.4" }
-serde = { features = ["derive"], optional = true, version = "1" }
+serde = { features = ["derive"], optional = true, workspace = true }
 unicode-id = { features = ["no_std"], version = "0.3" }
 
 [dev-dependencies]
@@ -39,9 +39,3 @@ name = "markdown"
 repository = "https://github.com/wooorm/markdown-rs"
 rust-version = "1.56"
 version = "1.0.0"
-
-[workspace]
-members = ["generate", "mdast_util_to_markdown"]
-
-[workspace.dependencies]
-pretty_assertions = "1"

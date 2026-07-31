@@ -54,18 +54,12 @@ impl Location {
     /// Port of <https://github.com/vfile/vfile-location/blob/main/index.js>
     #[must_use]
     pub fn to_point(&self, offset: usize) -> Option<Point> {
-        let mut index = 0;
-
         if let Some(end) = self.indices.last() {
             if offset < *end {
-                while index < self.indices.len() {
-                    if self.indices[index] > offset {
-                        break;
-                    }
-
-                    index += 1;
-                }
-
+                let index = match self.indices.binary_search(&offset) {
+                    Ok(index) => index + 1,
+                    Err(index) => index,
+                };
                 let previous = if index > 0 {
                     self.indices[index - 1]
                 } else {
@@ -145,6 +139,23 @@ mod tests {
             location.to_point(5), // Out of bounds
             None,
             "should support some points (6)"
+        );
+    }
+
+    #[test]
+    fn test_location_many_lines() {
+        let value = "x\n".repeat(4096);
+        let location = Location::new(value.as_bytes());
+        for line in [0, 1, 2048, 4095] {
+            let offset = line * 2;
+            assert_eq!(
+                location.to_point(offset),
+                Some(Point::new(line + 1, 1, offset))
+            );
+        }
+        assert_eq!(
+            location.to_point(value.len()),
+            Some(Point::new(4097, 1, value.len()))
         );
     }
 
