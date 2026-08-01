@@ -638,14 +638,15 @@ pub struct ObsidianEmbedResolution {
 /// A boxed closure that receives an [`ObsidianLinkTarget`] and returns an
 /// [`ObsidianLinkResolution`]. Use this to resolve wikilinks against a vault
 /// index, base URL, or other configuration.
-pub type ObsidianLinkResolver = dyn Fn(&ObsidianLinkTarget) -> ObsidianLinkResolution;
+pub type ObsidianLinkResolver = dyn Fn(&ObsidianLinkTarget) -> ObsidianLinkResolution + Send + Sync;
 
 /// Resolver for Obsidian embeds.
 ///
 /// A boxed closure that receives an [`ObsidianLinkTarget`] and returns an
 /// [`ObsidianEmbedResolution`]. Use this to perform transclusion or generate
 /// custom embed HTML.
-pub type ObsidianEmbedResolver = dyn Fn(&ObsidianLinkTarget) -> ObsidianEmbedResolution;
+pub type ObsidianEmbedResolver =
+    dyn Fn(&ObsidianLinkTarget) -> ObsidianEmbedResolution + Send + Sync;
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Default)]

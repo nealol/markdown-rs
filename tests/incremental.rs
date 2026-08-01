@@ -1,6 +1,56 @@
 use markdown::{Edit, EditBatch, Options, Patch, Renderer};
 
 #[test]
+fn rich_sections_remain_independently_renderable() {
+    let source = "# Incremental body benchmark\n\n## Section 0\n\nParagraph 0 contains **strong text**, *emphasis*, and a [link](/section-0/).\n\n- Item one\n- Item two\n\nBenchmark body token: body-a.\n";
+    let mut renderer = Renderer::open(source, Options::default()).unwrap();
+    let before: Vec<_> = renderer.blocks().collect();
+
+    assert_eq!(before.len(), 5);
+    assert_eq!(renderer.html(), markdown::to_html(source));
+    let body = source.find("body-a").unwrap();
+    renderer
+        .apply(EditBatch {
+            base_version: 0,
+            edits: vec![Edit {
+                start_byte: body,
+                old_end_byte: body + "body-a".len(),
+                replacement: "body-b".into(),
+            }],
+        })
+        .unwrap();
+    let after: Vec<_> = renderer.blocks().collect();
+    assert_eq!(after.len(), 5);
+    assert_eq!(before[0].id, after[0].id);
+    assert_eq!(before[3].id, after[3].id);
+
+    let end = renderer.source().len();
+    renderer
+        .apply(EditBatch {
+            base_version: 1,
+            edits: vec![Edit {
+                start_byte: end - 1,
+                old_end_byte: end,
+                replacement: String::new(),
+            }],
+        })
+        .unwrap();
+    assert_eq!(renderer.html(), markdown::to_html(renderer.source()));
+    let end = renderer.source().len();
+    renderer
+        .apply(EditBatch {
+            base_version: 2,
+            edits: vec![Edit {
+                start_byte: end,
+                old_end_byte: end,
+                replacement: "\n".into(),
+            }],
+        })
+        .unwrap();
+    assert_eq!(renderer.html(), markdown::to_html(renderer.source()));
+}
+
+#[test]
 fn edits_one_block_and_preserves_identity() {
     let source = "# Title\n\nAlpha.\n\nBravo.\n\nCharlie.\n\nDelta.";
     let mut renderer = Renderer::open(source, Options::default()).unwrap();

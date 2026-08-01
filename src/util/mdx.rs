@@ -45,7 +45,7 @@ pub enum Signal {
 /// Can be passed as `mdx_esm_parse` in
 /// [`ParseOptions`][crate::configuration::ParseOptions] to support
 /// ESM according to a certain grammar (typically, a programming language).
-pub type EsmParse = dyn Fn(&str) -> Signal;
+pub type EsmParse = dyn Fn(&str) -> Signal + Send + Sync;
 
 /// Expression kind.
 #[derive(Clone, Debug)]
@@ -83,7 +83,7 @@ pub enum ExpressionKind {
 /// expressions according to a certain grammar (typically, a programming
 /// language).
 ///
-pub type ExpressionParse = dyn Fn(&str, &ExpressionKind) -> Signal;
+pub type ExpressionParse = dyn Fn(&str, &ExpressionKind) -> Signal + Send + Sync;
 
 #[cfg(test)]
 mod tests {

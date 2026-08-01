@@ -510,7 +510,7 @@ impl Renderer {
         let mut blocks = parse_blocks(value, 0, &options.parse, &[], &mut next_id)?;
         render_all(value, &options, &mut blocks)?;
         let canonical = crate::to_html_with_options(value, &options)?;
-        let segmented = join_html(&blocks);
+        let segmented = join_html(&blocks, value);
         let whole_document = blocks.iter().any(|block| block.footnote) || segmented != canonical;
 
         if whole_document {
@@ -518,7 +518,7 @@ impl Renderer {
         }
 
         let checkpoints = make_checkpoints(&blocks);
-        let html = join_html(&blocks);
+        let html = join_html(&blocks, value);
 
         Ok(Self {
             source: value.to_string(),
@@ -667,7 +667,7 @@ impl Renderer {
 
         let new_visible = visible(&blocks);
         let patches = diff_visible(&old_visible, &new_visible);
-        let html = join_html(&blocks);
+        let html = join_html(&blocks, &new_source);
         let checkpoints = make_checkpoints(&blocks);
 
         self.source = new_source;
@@ -1161,12 +1161,16 @@ fn checkpoint_before(blocks: &[Block], offset: usize) -> usize {
     containing.saturating_sub(1)
 }
 
-fn join_html(blocks: &[Block]) -> String {
+fn join_html(blocks: &[Block], source: &str) -> String {
     let mut result = String::new();
     let mut seen_visible = false;
     let mut trailing_definition = false;
+    let trailing_line_ending = source.ends_with('\n')
+        && blocks
+            .iter()
+            .any(|block| !block.html.is_empty() && block.html.ends_with('\n'));
     for block in blocks.iter().filter(|block| !block.html.is_empty()) {
-        if !result.is_empty() {
+        if !result.is_empty() && !result.ends_with('\n') {
             result.push('\n');
         }
         result.push_str(&block.html);
@@ -1179,7 +1183,7 @@ fn join_html(blocks: &[Block]) -> String {
                 .any(|block| !block.definitions.is_empty());
         }
     }
-    if trailing_definition {
+    if (trailing_definition || trailing_line_ending) && !result.ends_with('\n') {
         result.push('\n');
     }
     result
@@ -1230,6 +1234,25 @@ fn rebase_node(node: &mut Node, shift: (usize, usize), location: &Location) {
         for child in children {
             rebase_node(child, shift, location);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rich_section_segmented_html_matches_canonical_html() {
+        let source = "# Incremental body benchmark\n\n## Section 0\n\nParagraph 0 contains **strong text**, *emphasis*, and a [link](/section-0/).\n\n- Item one\n- Item two\n\nBenchmark body token: body-a.\n";
+        let options = Options::default();
+        let mut next_id = 1;
+        let mut blocks = parse_blocks(source, 0, &options.parse, &[], &mut next_id).unwrap();
+        render_all(source, &options, &mut blocks).unwrap();
+
+        assert_eq!(
+            join_html(&blocks, source),
+            crate::to_html_with_options(source, &options).unwrap()
+        );
     }
 }
 
