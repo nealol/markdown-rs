@@ -34,6 +34,8 @@
 )]
 
 extern crate alloc;
+#[cfg(feature = "std")]
+extern crate std;
 mod code_hike_blocks;
 mod configuration;
 mod construct;
@@ -76,8 +78,9 @@ pub use configuration::{
     ObsidianLinkResolution, ObsidianLinkResolver, ObsidianLinkTarget, Options, ParseOptions,
 };
 pub use incremental::{
-    ApplyResult, AstApplyResult, AstApplySummary, AstBlock, AstSession, AstSnapshot,
-    BlockCheckpoint, ByteRange, Edit, EditBatch, Patch, RenderedBlock, Renderer,
+    ApplyResult, ApplyStageMetrics, AstApplyResult, AstApplySummary, AstBlock, AstSession,
+    AstSnapshot, BlockCheckpoint, ByteRange, Edit, EditBatch, OpenMetrics, Patch, RenderedBlock,
+    RenderedBlockRef, Renderer,
 };
 
 use alloc::string::String;
@@ -135,6 +138,9 @@ pub fn to_html(value: &str) -> String {
 /// # }
 /// ```
 pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, message::Message> {
+    #[cfg(feature = "std")]
+    let (events, parse_state) = parser::parse_recycled(value, &options.parse)?;
+    #[cfg(not(feature = "std"))]
     let (events, parse_state) = parser::parse(value, &options.parse)?;
     Ok(to_html::compile(
         &events,
@@ -167,6 +173,9 @@ pub fn to_html_with_options(value: &str, options: &Options) -> Result<String, me
 /// # }
 /// ```
 pub fn to_mdast(value: &str, options: &ParseOptions) -> Result<mdast::Node, message::Message> {
+    #[cfg(feature = "std")]
+    let (events, parse_state) = parser::parse_recycled(value, options)?;
+    #[cfg(not(feature = "std"))]
     let (events, parse_state) = parser::parse(value, options)?;
     let mut node = to_mdast::compile(&events, parse_state.bytes)?;
 

@@ -8,6 +8,13 @@ use crate::tokenizer::Tokenizer;
 use crate::util::location::Location;
 use crate::ParseOptions;
 use alloc::{string::String, vec, vec::Vec};
+#[cfg(feature = "std")]
+use core::{cell::RefCell, mem};
+
+#[cfg(feature = "std")]
+std::thread_local! {
+    static EVENT_SCRATCH: RefCell<Vec<Event>> = const { RefCell::new(Vec::new()) };
+}
 
 /// Info needed, in all content types, when parsing markdown.
 ///
@@ -30,11 +37,45 @@ pub struct ParseState<'a> {
 /// Turn a string of markdown into events.
 ///
 /// Passes the bytes back so the compiler can access the source.
+#[cfg(not(feature = "std"))]
 pub fn parse<'a>(
     value: &'a str,
     options: &'a ParseOptions,
 ) -> Result<(Vec<Event>, ParseState<'a>), message::Message> {
     parse_with_definitions(value, options, vec![], vec![])
+}
+
+/// Parsed events returned to this worker's scratch slot on drop.
+#[cfg(feature = "std")]
+pub(crate) struct RecycledEvents(Vec<Event>);
+
+#[cfg(feature = "std")]
+impl core::ops::Deref for RecycledEvents {
+    type Target = [Event];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "std")]
+impl Drop for RecycledEvents {
+    fn drop(&mut self) {
+        self.0.clear();
+        let events = mem::take(&mut self.0);
+        EVENT_SCRATCH.with(|scratch| *scratch.borrow_mut() = events);
+    }
+}
+
+/// Parse with event capacity retained by the current worker.
+#[cfg(feature = "std")]
+pub(crate) fn parse_recycled<'a>(
+    value: &'a str,
+    options: &'a ParseOptions,
+) -> Result<(RecycledEvents, ParseState<'a>), message::Message> {
+    let events = EVENT_SCRATCH.with(|scratch| mem::take(&mut *scratch.borrow_mut()));
+    parse_with_storage(value, options, vec![], vec![], events)
+        .map(|(events, state)| (RecycledEvents(events), state))
 }
 
 /// Turn a string of markdown into events with definitions inherited from a
@@ -44,6 +85,22 @@ pub(crate) fn parse_with_definitions<'a>(
     options: &'a ParseOptions,
     definitions: Vec<String>,
     gfm_footnote_definitions: Vec<String>,
+) -> Result<(Vec<Event>, ParseState<'a>), message::Message> {
+    parse_with_storage(
+        value,
+        options,
+        definitions,
+        gfm_footnote_definitions,
+        vec![],
+    )
+}
+
+fn parse_with_storage<'a>(
+    value: &'a str,
+    options: &'a ParseOptions,
+    definitions: Vec<String>,
+    gfm_footnote_definitions: Vec<String>,
+    events: Vec<Event>,
 ) -> Result<(Vec<Event>, ParseState<'a>), message::Message> {
     let bytes = value.as_bytes();
 
@@ -65,7 +122,7 @@ pub(crate) fn parse_with_definitions<'a>(
         index: 0,
         vs: 0,
     };
-    let mut tokenizer = Tokenizer::new(start, &parse_state);
+    let mut tokenizer = Tokenizer::new_with_events(start, &parse_state, events);
 
     let state = tokenizer.push(
         (0, 0),

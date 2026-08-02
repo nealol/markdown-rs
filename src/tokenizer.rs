@@ -326,6 +326,16 @@ pub struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     /// Create a new tokenizer.
     pub fn new(point: Point, parse_state: &'a ParseState) -> Tokenizer<'a> {
+        Self::new_with_events(point, parse_state, vec![])
+    }
+
+    /// Create a tokenizer with reusable event storage.
+    pub fn new_with_events(
+        point: Point,
+        parse_state: &'a ParseState,
+        mut events: Vec<Event>,
+    ) -> Tokenizer<'a> {
+        events.clear();
         Tokenizer {
             previous: None,
             current: None,
@@ -337,7 +347,7 @@ impl<'a> Tokenizer<'a> {
             attempts: vec![],
             point,
             stack: vec![],
-            events: vec![],
+            events,
             parse_state,
             tokenize_state: TokenizeState {
                 connect: false,

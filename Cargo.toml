@@ -21,10 +21,11 @@ swc_core = { version = "71", features = [
 ] }
 
 [features]
-default = []
+default = ["std"]
 json = ["serde"]
 log = ["dep:log"]
 serde = ["dep:serde"]
+std = []
 
 [package]
 authors = ["Titus Wormer <tituswormer@gmail.com>"]

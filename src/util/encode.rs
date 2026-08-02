@@ -26,6 +26,12 @@ use alloc::string::String;
 pub fn encode(value: &str, encode_html: bool) -> String {
     // It’ll grow a bit bigger for each dangerous character.
     let mut result = String::with_capacity(value.len());
+    encode_into(value, encode_html, &mut result);
+    result
+}
+
+/// Append encoded text directly to an existing output buffer.
+pub fn encode_into(value: &str, encode_html: bool, result: &mut String) {
     let bytes = value.as_bytes();
     let mut index = 0;
     let mut start = 0;
@@ -50,6 +56,4 @@ pub fn encode(value: &str, encode_html: bool) -> String {
     }
 
     result.push_str(&value[start..]);
-
-    result
 }

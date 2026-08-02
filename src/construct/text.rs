@@ -54,6 +54,8 @@ const MARKERS: [u8; 19] = [
     b'~',  // `attention` (gfm strikethrough)
 ];
 
+const COMMON_MARKERS: [u8; 9] = [b'!', b'&', b'*', b'<', b'[', b'\\', b']', b'_', b'`'];
+
 /// Start of text.
 ///
 /// There is a slightly weird case where task list items have their check at
@@ -65,7 +67,19 @@ const MARKERS: [u8; 19] = [
 ///     ^
 /// ```
 pub fn start(tokenizer: &mut Tokenizer) -> State {
-    tokenizer.tokenize_state.markers = &MARKERS;
+    let constructs = &tokenizer.parse_state.options.constructs;
+    tokenizer.tokenize_state.markers = if constructs.math_text
+        || constructs.gfm_autolink_literal
+        || constructs.gfm_strikethrough
+        || constructs.mdx_expression_text
+        || constructs.obsidian_block_id
+        || constructs.obsidian_comment
+        || constructs.obsidian_highlight
+    {
+        &MARKERS
+    } else {
+        &COMMON_MARKERS
+    };
     tokenizer.attempt(
         State::Next(StateName::TextBefore),
         State::Next(StateName::TextBefore),

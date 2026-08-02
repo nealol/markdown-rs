@@ -194,6 +194,71 @@ fn adding_a_definition_reclassifies_earlier_references() {
 }
 
 #[test]
+fn adding_a_multiline_definition_reclassifies_earlier_references() {
+    let source = "[One][a b]\n\nUnrelated.";
+    let mut renderer = Renderer::open(source, Options::default()).unwrap();
+
+    renderer
+        .apply(EditBatch {
+            base_version: 0,
+            edits: vec![Edit {
+                start_byte: source.len(),
+                old_end_byte: source.len(),
+                replacement: "\n\n[a\n  b]: /old".into(),
+            }],
+        })
+        .unwrap();
+
+    assert_eq!(
+        renderer.html(),
+        "<p><a href=\"/old\">One</a></p>\n<p>Unrelated.</p>\n"
+    );
+}
+
+#[test]
+fn editing_a_multiline_definition_rerenders_earlier_references() {
+    let source = "[One][a b]\n\nUnrelated.\n\n[a\n  b]: /old";
+    let mut renderer = Renderer::open(source, Options::default()).unwrap();
+    let destination = source.find("/old").unwrap();
+
+    renderer
+        .apply(EditBatch {
+            base_version: 0,
+            edits: vec![Edit {
+                start_byte: destination,
+                old_end_byte: destination + "/old".len(),
+                replacement: "/new".into(),
+            }],
+        })
+        .unwrap();
+
+    assert_eq!(
+        renderer.html(),
+        "<p><a href=\"/new\">One</a></p>\n<p>Unrelated.</p>\n"
+    );
+}
+
+#[test]
+fn removing_a_multiline_definition_restores_literal_reference_text() {
+    let source = "[One][a b]\n\nUnrelated.\n\n[a\n  b]: /old";
+    let mut renderer = Renderer::open(source, Options::default()).unwrap();
+    let definition_start = source.find("[a\n").unwrap();
+
+    renderer
+        .apply(EditBatch {
+            base_version: 0,
+            edits: vec![Edit {
+                start_byte: definition_start - 2,
+                old_end_byte: source.len(),
+                replacement: String::new(),
+            }],
+        })
+        .unwrap();
+
+    assert_eq!(renderer.html(), "<p>[One][a b]</p>\n<p>Unrelated.</p>");
+}
+
+#[test]
 fn removing_a_definition_restores_literal_reference_text() {
     let source = "[One][docs]\n\nUnrelated.\n\n[docs]: /old";
     let mut renderer = Renderer::open(source, Options::default()).unwrap();
@@ -215,6 +280,32 @@ fn removing_a_definition_restores_literal_reference_text() {
         .patches
         .iter()
         .any(|patch| matches!(patch, Patch::Replace { html, .. } if html == "<p>[One][docs]</p>")));
+}
+
+#[test]
+fn reference_definition_edits_parse_the_document_once() {
+    let source = "[One][docs]\n\nUnrelated.\n\n[docs]: /old";
+    let mut renderer = Renderer::open(source, Options::default()).unwrap();
+    let start = source.find("/old").unwrap();
+    let (_, metrics) = renderer
+        .apply_measured(
+            EditBatch {
+                base_version: 0,
+                edits: vec![Edit {
+                    start_byte: start,
+                    old_end_byte: start + "/old".len(),
+                    replacement: "/new".into(),
+                }],
+            },
+            || 0,
+        )
+        .unwrap();
+
+    assert_eq!(metrics.parser_invocations, 1);
+    assert_eq!(
+        renderer.html(),
+        "<p><a href=\"/new\">One</a></p>\n<p>Unrelated.</p>\n"
+    );
 }
 
 #[test]

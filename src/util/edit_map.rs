@@ -85,9 +85,9 @@ impl EditMap {
 
         // Calculate jumps: where items in the current list move to.
         let mut jumps = Vec::with_capacity(self.map.len());
-        let mut index = 0;
         let mut add_acc = 0;
         let mut remove_acc = 0;
+        let mut index = 0;
         while index < self.map.len() {
             let (at, remove, add) = &self.map[index];
             remove_acc += remove;
@@ -121,23 +121,20 @@ impl EditMap {
 
 /// Create an edit.
 fn add_impl(edit_map: &mut EditMap, at: usize, remove: usize, mut add: Vec<Event>, before: bool) {
-    let mut index = 0;
-
     if remove == 0 && add.is_empty() {
         return;
     }
 
+    let mut index = 0;
     while index < edit_map.map.len() {
         if edit_map.map[index].0 == at {
             edit_map.map[index].1 += remove;
-
             if before {
                 add.append(&mut edit_map.map[index].2);
                 edit_map.map[index].2 = add;
             } else {
                 edit_map.map[index].2.append(&mut add);
             }
-
             return;
         }
 
